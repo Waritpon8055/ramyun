@@ -49,7 +49,7 @@ h1,h2,h3{font-family:var(--display);font-weight:500;margin:0;line-height:1.25}
 .top h1{font-size:20px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top .day{font-size:13px;color:var(--muted);text-align:right;line-height:1.3}
 .top .day b{display:block;font-family:var(--display);font-weight:500;font-size:17px;color:var(--ink)}
-.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(5,1fr);background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(6,1fr);background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabs button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 9px;font-size:12px;color:var(--muted);position:relative}
 .tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .tabs button[aria-current="page"]{color:var(--red);font-weight:600}
@@ -204,6 +204,23 @@ label.f input,label.f select,.in{display:block;width:100%;margin-top:4px;padding
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;font-size:15px;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
 
 .mfind .in{margin-top:0}
+.due{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
+.due:last-child{border-bottom:0}
+.due .tx{flex:1;min-width:0}
+.due .tx b{display:block;font-weight:600}
+.due .tx small{color:var(--muted);font-size:13px}
+.cmp{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:15px;margin:4px 0 12px}
+.cmp span:nth-child(even){font-family:var(--display);text-align:right;font-variant-numeric:tabular-nums}
+.cmp .tot{font-weight:600;border-top:1px solid var(--line);padding-top:6px}
+.neg{color:var(--red)}
+.mrow2{display:grid;grid-template-columns:64px 1fr auto;gap:10px;align-items:center;padding:8px 0}
+.mrow2 .bar{height:10px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.mrow2 .bar i{display:block;height:100%;border-radius:99px;background:var(--ok)}
+.mrow2 .bar i.neg{background:var(--red)}
+.mrow2 .v{font-family:var(--display);text-align:right;line-height:1.2}
+.mrow2 .v small{display:block;font-family:var(--body);font-size:12px;color:var(--muted)}
+.chk{display:flex;gap:10px;align-items:center;font-size:14.5px;margin:0 0 14px}
+.chk input{width:20px;height:20px}
 .pimg{display:flex;gap:14px;align-items:center;margin-bottom:14px}
 .pprev{width:120px;flex:none;aspect-ratio:5/4;max-width:40%;border-radius:12px;overflow:hidden;background:var(--sunk);display:grid;place-items:center;color:var(--muted);font-size:13px;text-align:center;padding:4px}
 .pprev img{width:100%;height:100%;object-fit:cover;border-radius:10px}
@@ -289,7 +306,7 @@ const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(
 const S = {
   ready: false, mode: 'loading', cfg: null, days: {},
   tab: 'sell', cat: 'ทั้งหมด', cart: [], disc: { type: 'none' },
-  range: 'today', sel: null, rankBy: 'qty', sheet: null, mem: [], cm: null, redeem: false, mq: '', imgs: {}, ro: false, offline: false
+  range: 'today', sel: null, rankBy: 'qty', sheet: null, mem: [], cm: null, redeem: false, mq: '', imgs: {}, ro: false, offline: false, exp: {}, expM: 'cur'
 };
 let db = null, dl = null, toastTimer = null;
 
@@ -300,7 +317,13 @@ function normCfg(c) {
     products: Array.isArray(c.products) ? c.products : [],
     toppings: Array.isArray(c.toppings) ? c.toppings : [],
     promos: Array.isArray(c.promos) ? c.promos : [],
-    loyalty: { per: +(c.loyalty || {}).per || 60, need: +(c.loyalty || {}).need || 10, bday: +(c.loyalty || {}).bday || 2 }
+    loyalty: { per: +(c.loyalty || {}).per || 60, need: +(c.loyalty || {}).need || 10, bday: +(c.loyalty || {}).bday || 2 },
+    expCats: Array.isArray(c.expCats) ? c.expCats : [
+      { id: 'c-rent', name: 'ค่าเช่า', fixed: true, amt: 0 }, { id: 'c-elec', name: 'ค่าไฟ', fixed: true, amt: 0 },
+      { id: 'c-water', name: 'ค่าน้ำ', fixed: true, amt: 0 }, { id: 'c-gas', name: 'แก๊ส', fixed: false, amt: 0 },
+      { id: 'c-fresh', name: 'ของสดและท็อปปิ้ง', fixed: false, amt: 0 }, { id: 'c-supply', name: 'ของใช้สิ้นเปลือง', fixed: false, amt: 0 },
+      { id: 'c-other', name: 'อื่นๆ', fixed: false, amt: 0 }],
+    float: +c.float || 0
   };
 }
 const prod = id => S.cfg.products.find(p => p.id === id);
@@ -341,7 +364,8 @@ let cfgTimer = null;
 function saveCfg() { clearTimeout(cfgTimer); cfgTimer = setTimeout(() => { cfgTimer = null; queueWrite('config/shop', () => S.cfg); }, 350); }
 function saveImg(id) { queueWrite('images/' + id, () => S.imgs[id] ? { data: S.imgs[id] } : null); }
 function saveMem() { queueWrite('members/all', () => ({ list: S.mem })); }
-function saveDay(k) { queueWrite('days/' + k, () => { const d = S.days[k]; return d && d.bills.length ? d : null; }); }
+function saveDay(k) { queueWrite('days/' + k, () => { const d = S.days[k]; return d && (d.bills.length || d.close) ? d : null; }); }
+function saveExp(mk) { queueWrite('expenses/' + mk, () => { const e = S.exp[mk]; return e && e.items.length ? e : null; }); }
 
 /* ---------- Supabase storage ----------
    Every record is one row in table "docs": path ("config/shop", "days/2026-10-19",
@@ -456,7 +480,16 @@ async function init() {
     render();
   }, () => {});
   const [y, m] = parts(today());
-  const cutoff = dkey(new Date(y, m - 2, 1));
+  const cutoff = dkey(new Date(y, m - 6, 1));
+  db.collection('expenses').where('month', '>=', cutoff.slice(0, 7)).onSnapshot(snap => {
+    snap.docChanges().forEach(ch => {
+      const id = ch.doc.id, w = W['expenses/' + id];
+      if (w && w.busy) return;
+      if (ch.type === 'removed') { delete S.exp[id]; return; }
+      const v = clone(ch.doc.data()); if (!Array.isArray(v.items)) v.items = []; S.exp[id] = v;
+    });
+    render();
+  }, () => {});
   db.collection('days').where('date', '>=', cutoff).onSnapshot(snap => {
     snap.docs.forEach(d => {
       const w = W['days/' + d.id];
@@ -499,6 +532,7 @@ const liveBills = k => ((S.days[k] || {}).bills || []).filter(b => !b.void);
 /* ---------- render: shell ---------- */
 const ICON = {
   sell: '<path d="M4 6h16l-1.5 9h-13z"/><path d="M8 6V4h8v2"/><circle cx="9" cy="19" r="1.4"/><circle cx="16" cy="19" r="1.4"/>',
+  exp: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M15.5 14.5h2.5"/><path d="M6 6l9-3 1.5 3"/>',
   sum: '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M21 20H3"/>',
   mem: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M18 4.5l1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z"/>',
   stock: '<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>',
@@ -520,7 +554,7 @@ function stockAlerts() {
   return out;
 }
 function render() {
-  const tabs = [['sell', 'ขาย'], ['sum', 'สรุปยอด'], ['mem', 'สมาชิก'], ['stock', 'สต็อก'], ['set', 'ตั้งค่า']];
+  const tabs = [['sell', 'ขาย'], ['sum', 'สรุปยอด'], ['exp', 'รายจ่าย'], ['mem', 'สมาชิก'], ['stock', 'สต็อก'], ['set', 'ตั้งค่า']];
   const alerts = S.ready ? stockAlerts().length : 0;
   $('#tabs').innerHTML = tabs.map(([k, t]) => `<button data-act="tab" data-id="${k}" ${S.tab === k ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${t}${k === 'stock' && alerts ? '<span class="dot" title="มีของต้องดู"></span>' : ''}</button>`).join('');
   if (!S.ready) { $('#view').innerHTML = '<p class="empty">กำลังโหลดข้อมูลร้าน…</p>'; return; }
@@ -530,7 +564,7 @@ function render() {
   const mem = S.offline ? '<p class="note stop"><b>ยังบันทึกข้อมูลล่าสุดไม่ได้</b> ตรวจอินเทอร์เน็ต ระบบจะลองใหม่ให้เอง อย่าเพิ่งปิดหน้านี้</p>'
     : S.ro ? '<p class="note stop"><b>บัญชีนี้บันทึกข้อมูลไม่ได้</b> ออกจากระบบในแท็บตั้งค่าแล้วเข้าใหม่ด้วยบัญชีเจ้าของร้าน</p>'
     : S.mode === 'memory' ? '<p class="note stop"><b>ยังไม่ได้ต่อฐานข้อมูล ข้อมูลจะหายเมื่อปิดหรือรีเฟรชหน้า</b> ใส่ค่า Supabase ในไฟล์ config.js ตามขั้นตอนใน README</p>' : '';
-  $('#view').innerHTML = mem + ({ sell: viewSell, sum: viewSum, mem: viewMem, stock: viewStock, set: viewSet }[S.tab])();
+  $('#view').innerHTML = mem + ({ sell: viewSell, sum: viewSum, exp: viewExp, mem: viewMem, stock: viewStock, set: viewSet }[S.tab])();
   const q = cartQty();
   $('#cartBarSlot').innerHTML = S.tab === 'sell' && q ? `<button class="cartbar" data-act="openCart"><span class="n">${q}</span>ดูบิล<span class="t num">${B(cartTotal())}</span></button>` : '';
 }
@@ -652,6 +686,9 @@ function viewSum() {
   bills.forEach(b => { if (!b.m) return; const x = ma[b.m] || (ma[b.m] = { n: (member(b.m) || {}).name || b.mn, spent: 0, v: 0 }); x.spent += b.total; x.v++; });
   const ml = Object.values(ma).sort((a, b) => b.spent - a.spent).slice(0, 5), mrev = Object.values(ma).reduce((a, x) => a + x.spent, 0), mmax = Math.max(1, ...ml.map(x => x.spent));
   const memCard = `<section class="card"><h2>ลูกค้าประจำ</h2>${ml.length ? `<p class="read">ยอดจากสมาชิก <b>${B(mrev)}</b> คิดเป็น ${rev ? Math.round(mrev / rev * 100) : 0}% ของยอดขาย</p><div class="rank">${ml.map(x => `<div class="rk" style="grid-template-columns:1fr auto"><div><div class="nm">${esc(x.n)}</div><div class="bar"><i style="width:${Math.max(3, x.spent / mmax * 100)}%"></i></div></div><div class="v">${B(x.spent)}<small>${x.v} ครั้ง</small></div></div>`).join('')}</div>` : '<p class="empty">ยังไม่มีบิลของสมาชิกในช่วงนี้ เลือกสมาชิกตอนคิดเงินเพื่อเริ่มสะสมแต้ม</p>'}</section>`;
+  const dset = new Set(days);
+  const expSum = allExp().filter(i => i.kind !== 'stock' && dset.has(i.date)).reduce((a, i) => a + i.amt, 0), net = profit - expSum;
+  const monthCard = monthlyCard();
   const cash = bills.filter(b => b.pay === 'cash').reduce((a, b) => a + b.total, 0), qr = rev - cash;
   const recent = all.sort((a, b) => b.t < a.t ? -1 : 1).slice(0, 12);
   const billHTML = recent.length ? recent.map(b => `<div class="bill ${b.void ? 'void' : ''}"><div class="tx"><b>${S.range === 'today' ? '' : fmtDay(b.day) + ' '}${new Date(b.t).toTimeString().slice(0, 5)}</b> ${b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์'}${b.mn ? ' สมาชิก ' + esc(b.mn) : ''}
@@ -662,8 +699,10 @@ function viewSum() {
   return `${hasDemo ? '<p class="note">ตัวเลขตอนนี้มีข้อมูลตัวอย่างปนอยู่ เพื่อให้เห็นหน้าตากราฟ <button data-act="askClearDemo">ลบข้อมูลตัวอย่าง</button></p>' : ''}
   <div class="chips">${ranges.map(([k, t]) => `<button class="chip" data-act="range" data-id="${k}" aria-pressed="${S.range === k}">${t}</button>`).join('')}</div>
   <div class="kpis">
-    <div class="kpi main"><span>ยอดขาย</span><b>${B(rev)}</b>${rev ? `<i>กำไร ${Math.round(profit / rev * 100)}%</i>` : ''}</div>
-    <div class="kpi"><span>กำไรหลังหักต้นทุน</span><b>${B(profit)}</b></div>
+    <div class="kpi main"><span>ยอดขาย</span><b>${B(rev)}</b>${rev ? (net < 0 ? '<i>ขาดทุน</i>' : `<i>กำไรสุทธิ ${Math.round(net / rev * 100)}%</i>`) : ''}</div>
+    <div class="kpi"><span>กำไรหลังหักต้นทุนเส้น</span><b>${B(profit)}</b></div>
+    <div class="kpi"><span>รายจ่ายร้าน</span><b>${B(expSum)}</b></div>
+    <div class="kpi"><span>กำไรสุทธิ</span><b class="${net < 0 ? 'neg' : ''}">${net < 0 ? '−' + B(-net) : B(net)}</b></div>
     <div class="kpi"><span>จำนวนบิล</span><b>${bills.length}</b></div>
     <div class="kpi"><span>เฉลี่ยต่อบิล</span><b>${B(bills.length ? rev / bills.length : 0)}</b></div>
     <div class="kpi"><span>ขายไป</span><b>${bowls} ชาม</b></div>
@@ -680,6 +719,7 @@ function viewSum() {
       <div class="chips">${[['qty', 'ตามจำนวน'], ['rev', 'ตามยอดขาย'], ['profit', 'ตามกำไร']].map(([k, t]) => `<button class="chip" data-act="rankBy" data-id="${k}" aria-pressed="${S.rankBy === k}">${t}</button>`).join('')}</div>
       <div class="rank">${rankHTML}</div>
     </section></div><div>
+    ${monthCard}
     <section class="card"><h2>ช่องทางรับเงิน</h2>
       <div class="split"><i style="width:${rev ? cash / rev * 100 : 0}%"></i><i style="width:${rev ? qr / rev * 100 : 0}%"></i></div>
       <div class="legend"><span>เงินสด <b class="num">${B(cash)}</b></span><span>พร้อมเพย์ <b class="num">${B(qr)}</b></span></div>
@@ -706,6 +746,64 @@ function viewStock() {
   }).join('');
   return `${alHTML}<section class="card"><h2>สินค้าและสต็อก</h2>${rows || '<p class="empty">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>'}</section>
     <div class="row2"><button class="btn line" data-act="editProd" data-id="">เพิ่มสินค้า</button><button class="btn line" data-act="bulk">กรอกหลายรายการ</button></div>`;
+}
+
+/* ---------- render: expenses ---------- */
+const monthOf = k => k.slice(0, 7);
+const expItems = mk => ((S.exp[mk] || {}).items) || [];
+const allExp = () => Object.values(S.exp).flatMap(e => e.items || []);
+const catOf = id => S.cfg.expCats.find(c => c.id === id);
+const catName = i => i.kind === 'stock' ? 'รับของเข้า' : ((catOf(i.cat) || {}).name || 'อื่นๆ');
+const sumAmt = a => a.reduce((x, i) => x + (+i.amt || 0), 0);
+const signB = v => v < 0 ? '−' + B(-v) : B(v);
+const monthLabel = mk => { const [y, m] = mk.split('-').map(Number); return TH_MF[m - 1] + ' ' + (y + 543); };
+function monthlyCard() {
+  const t = today(), [y, m] = parts(t);
+  const months = Array.from({ length: 6 }, (_, i) => dkey(new Date(y, m - 1 - i, 1)).slice(0, 7));
+  const rows = months.map(mk => {
+    const bs = Object.keys(S.days).filter(k => monthOf(k) === mk).flatMap(liveBills);
+    const sales = bs.reduce((a, b) => a + b.total, 0), cost = bs.reduce((a, b) => a + (b.cost || 0), 0);
+    const ex = sumAmt(expItems(mk).filter(i => i.kind !== 'stock'));
+    return { mk, sales, cost, ex, net: sales - cost - ex };
+  }).filter((r, i) => i === 0 || r.sales || r.ex);
+  const max = Math.max(1, ...rows.map(r => Math.abs(r.net)));
+  return `<section class="card"><h2>กำไรสุทธิรายเดือน</h2><p class="read">ยอดขาย − ต้นทุนเส้น − รายจ่ายร้าน</p>
+    ${rows.map(r => `<div class="mrow2"><span>${TH_M[+r.mk.slice(5) - 1]}</span><span class="bar"><i class="${r.net < 0 ? 'neg' : ''}" style="width:${Math.max(r.net ? 3 : 0, Math.abs(r.net) / max * 100)}%"></i></span>
+      <span class="v ${r.net < 0 ? 'neg' : ''}">${signB(r.net)}<small>ขาย ${B(r.sales)} จ่าย ${B(r.cost + r.ex)}</small></span></div>`).join('')}</section>`;
+}
+function cashToday() {
+  const t = today();
+  const sales = liveBills(t).filter(b => b.pay === 'cash').reduce((a, b) => a + b.total, 0);
+  const out = sumAmt(expItems(monthOf(t)).filter(i => i.date === t && i.pay === 'cash'));
+  return { sales, out };
+}
+function viewExp() {
+  const t = today(), cur = monthOf(t), [y, m] = parts(t), prev = dkey(new Date(y, m - 2, 1)).slice(0, 7);
+  const mk = S.expM === 'prev' ? prev : cur;
+  const items = expItems(mk).slice().sort((a, b) => a.date !== b.date ? (a.date < b.date ? 1 : -1) : (a.t < b.t ? 1 : -1));
+  const ops = items.filter(i => i.kind !== 'stock'), stock = items.filter(i => i.kind === 'stock');
+  const opSum = sumAmt(ops), stSum = sumAmt(stock);
+  const byCat = {}; ops.forEach(i => byCat[i.cat] = (byCat[i.cat] || 0) + i.amt);
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), cmax = Math.max(1, ...cats.map(c => c[1]));
+  const due = mk === cur ? S.cfg.expCats.filter(c => c.fixed && !ops.some(i => i.cat === c.id)) : [];
+  const close = (S.days[t] || {}).close;
+  const dueHTML = due.length ? `<section class="card"><h2>รายจ่ายประจำที่ยังไม่บันทึกเดือนนี้</h2>${due.map(c => `<div class="due"><div class="tx"><b>${esc(c.name)}</b><small>${c.amt ? 'ปกติ ' + B(c.amt) : 'ยังไม่ได้ตั้งยอดปกติ'}</small></div><button class="btn sm" data-act="newExp" data-cat="${c.id}">บันทึก</button></div>`).join('')}</section>` : '';
+  const closeHTML = mk === cur ? `<section class="card"><h2>ปิดยอดวันนี้</h2>${close
+      ? `<div class="cmp"><span>ปิดยอดเมื่อ</span><span>${new Date(close.t).toTimeString().slice(0, 5)}</span><span>เงินที่ควรมีในลิ้นชัก</span><span>${signB(close.expected)}</span><span>นับได้จริง</span><span>${B(close.counted)}</span>
+          <span class="tot">${close.diff === 0 ? 'ตรงพอดี' : close.diff > 0 ? 'เงินเกิน' : 'เงินขาด'}</span><span class="tot ${close.diff < 0 ? 'neg' : ''}">${close.diff ? B(Math.abs(close.diff)) : '฿0'}</span></div>
+         <button class="btn line" data-act="closeDay">ปิดยอดใหม่</button>`
+      : `<p class="read">นับเงินสดในลิ้นชักตอนปิดร้าน เทียบกับที่ระบบคำนวณจากบิลเงินสดและรายจ่ายเงินสดของวันนี้</p><button class="btn line" data-act="closeDay">ปิดยอดวันนี้</button>`}</section>` : '';
+  const list = items.length ? items.map(i => `<div class="bill"><div class="tx"><b>${fmtDay(i.date)}</b> ${esc(catName(i))}
+      <small>${i.kind === 'stock' ? esc(i.pn) + ' ' + i.qty + ' ซอง ซองละ ' + B(i.unit) : esc(i.note || '')}${i.pay === 'transfer' ? ' โอน' : ' เงินสด'}</small></div>
+      <div class="am">${B(i.amt)}<br><button class="linkbtn" data-act="askDelExp" data-id="${i.id}" data-m="${mk}">ลบ</button></div></div>`).join('')
+    : '<p class="empty">ยังไม่มีรายจ่ายเดือนนี้ กด “บันทึกรายจ่าย” เพื่อเพิ่มรายการแรก</p>';
+  return `<div class="chips"><button class="chip" data-act="expM" data-id="cur" aria-pressed="${mk === cur}">เดือนนี้</button><button class="chip" data-act="expM" data-id="prev" aria-pressed="${mk === prev}">เดือนก่อน</button></div>
+  <div class="kpis"><div class="kpi main"><span>รายจ่ายร้าน ${monthLabel(mk)}</span><b>${B(opSum)}</b>${stSum ? `<i>รับของเข้า ${B(stSum)}</i>` : ''}</div></div>
+  <div class="row2" style="margin-bottom:14px"><button class="btn red" data-act="newExp">บันทึกรายจ่าย</button><button class="btn" data-act="newStockIn">รับของเข้า</button></div>
+  <div class="twocol"><div>${dueHTML}${closeHTML}
+    <section class="card"><h2>แยกตามหมวด</h2>${cats.length ? `<div class="rank">${cats.map(([id, v]) => `<div class="rk" style="grid-template-columns:1fr auto"><div><div class="nm">${esc((catOf(id) || {}).name || 'อื่นๆ')}</div><div class="bar"><i style="width:${Math.max(3, v / cmax * 100)}%"></i></div></div><div class="v">${B(v)}<small>${opSum ? Math.round(v / opSum * 100) : 0}%</small></div></div>`).join('')}</div>` : '<p class="empty">ยังไม่มีรายจ่ายในเดือนนี้</p>'}
+    <p class="read" style="margin:12px 0 0">เงินซื้อเส้นจากปุ่มรับของเข้าไม่นับรวมในรายจ่ายร้าน เพราะระบบหักต้นทุนเส้นตอนขายไปแล้ว</p></section>
+  </div><div><section class="card"><h2>รายการ</h2>${list}</section></div></div>`;
 }
 
 /* ---------- render: members ---------- */
@@ -737,6 +835,8 @@ function viewSet() {
     <div class="setrow"><div class="tx"><small>${c.promos.length ? esc(c.promos.map(promoLabel).join(', ')) : 'ยังไม่มีโปรโมชัน'}</small></div><button class="btn sm" data-act="editPromos">แก้ไข</button></div></section>
   <section class="card"><h2>สมาชิกและแต้ม</h2>
     <div class="setrow"><div class="tx"><small>ทุก ${B(c.loyalty.per)} ได้ 1 แต้ม ครบ ${c.loyalty.need} แต้มแลกฟรี 1 ชาม เดือนเกิดได้แต้ม x${c.loyalty.bday}</small></div><button class="btn sm" data-act="editLoy">แก้ไข</button></div></section>
+  <section class="card"><h2>หมวดรายจ่าย</h2>
+    <div class="setrow"><div class="tx"><small>${esc(c.expCats.map(x => x.name + (x.fixed ? ' (ประจำ)' : '')).join(', ')) || 'ยังไม่มีหมวด'}</small></div><button class="btn sm" data-act="editExpCats">แก้ไข</button></div></section>
   <section class="card"><h2>ข้อมูล</h2>
     ${dl ? '<div class="setrow"><div class="tx"><b>สำรองข้อมูลเป็น Excel</b><small>ไฟล์เดียวมีสินค้า ท็อปปิ้ง บิลทั้งหมด และสมาชิก</small></div><button class="btn sm" data-act="csv">สำรองข้อมูล</button></div>' : ''}
     ${hasDemo ? '<div class="setrow"><div class="tx"><b>ข้อมูลตัวอย่าง</b><small>ยอดขายสมมติที่ใส่ไว้ให้ดูกราฟ ลบก่อนเริ่มขายจริง</small></div><button class="btn sm" data-act="askClearDemo">ลบข้อมูลตัวอย่าง</button></div>' : ''}
@@ -824,7 +924,7 @@ function renderSheet() {
       <div class="stats"><div><span>แต้มสะสม</span><b>${pts}</b></div><div><span>ยอดซื้อรวม</span><b>${B(m.spent)}</b></div><div><span>มาแล้ว</span><b>${m.visits || 0} ครั้ง</b></div></div>
       <span class="prog"><i style="width:${Math.min(100, pts / L.need * 100)}%"></i></span>
       <p class="read" style="margin-top:8px">${pts >= L.need ? 'แลกฟรี 1 ชามได้แล้ว' : `อีก ${L.need - pts} แต้ม แลกฟรี 1 ชาม`}${fav ? ` ชอบสั่ง${esc(fav)}` : ''}</p>
-      <h3 class="h3s">ประวัติการซื้อตั้งแต่ต้นเดือนก่อน</h3>
+      <h3 class="h3s">ประวัติการซื้อ 6 เดือนล่าสุด</h3>
       ${hist.length ? hist.slice(0, 20).map(b => `<div class="bill"><div class="tx"><b>${fmtDay(b.day)} ${new Date(b.t).toTimeString().slice(0, 5)}</b><small>${esc(b.items.map(l => l.n + (l.q > 1 ? ' ×' + l.q : '')).join(', '))}</small></div><div class="am">${B(b.total)}<br><span class="tag ok">${b.red ? 'ใช้ ' + b.red + ' แต้ม ' : ''}+${b.earn || 0} แต้ม</span></div></div>`).join('') : '<p class="empty">ยังไม่มีบิลในช่วงนี้</p>'}
       <button class="btn" data-act="editMem" data-id="${m.id}" style="margin-top:12px">แก้ไขสมาชิก</button>`);
   } else if (s.type === 'loy') {
@@ -837,6 +937,30 @@ function renderSheet() {
     html = shell('กรอกสินค้าหลายรายการ', `<p class="read" style="margin-top:0">แก้ได้ทุกช่อง แถวที่ลบจะถูกลบจากร้านเมื่อกดบันทึก</p>
       <div class="erow e5 ehead"><span>ชื่อสินค้า</span><span>ราคาขาย</span><span>ต้นทุน</span><span>สต็อก</span><span></span></div><div id="rows">${s.rows.map(bulkRow).join('')}</div>
       <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มแถว</button><button class="btn red" data-act="saveBulk">บันทึกสินค้าทั้งหมด</button>`);
+  } else if (s.type === 'exp') {
+    html = shell('บันทึกรายจ่าย', `<label class="f">จำนวนเงิน (บาท)<input id="eAmt" class="cashin" type="number" inputmode="decimal" min="0" placeholder="0" value="${s.amt || ''}"></label>
+      <h3 class="h3s" style="margin-top:0">หมวด</h3><div class="chips" style="flex-wrap:wrap">${S.cfg.expCats.map(c => `<button class="chip y" data-act="pickIn" data-k="cat" data-id="${c.id}" aria-pressed="${s.cat === c.id}">${esc(c.name)}</button>`).join('')}</div>
+      <h3 class="h3s" style="margin-top:4px">จ่ายด้วย</h3><div class="chips"><button class="chip" data-act="pickIn" data-k="pay" data-id="cash" aria-pressed="${s.pay === 'cash'}">เงินสด</button><button class="chip" data-act="pickIn" data-k="pay" data-id="transfer" aria-pressed="${s.pay === 'transfer'}">โอน</button></div>
+      <div class="row2"><label class="f">วันที่<input id="eDate" type="date" value="${s.date}"></label><label class="f">หมายเหตุ<input id="eNote" placeholder="เช่น บิลเดือน ต.ค."></label></div>
+      <button class="btn red" data-act="saveExp">บันทึกรายจ่าย</button>`);
+  } else if (s.type === 'stockIn') {
+    const ps = S.cfg.products;
+    html = shell('รับของเข้า', ps.length ? `<label class="f">สินค้า<select id="sProd">${ps.map(p => `<option value="${p.id}">${esc(p.name)} (เหลือ ${p.stock || 0})</option>`).join('')}</select></label>
+      <div class="row2"><label class="f">จำนวน (ซอง)<input id="sQty" type="number" inputmode="numeric" min="1" placeholder="0"></label><label class="f">จ่ายไปทั้งหมด (บาท)<input id="sAmt" type="number" inputmode="decimal" min="0" placeholder="0"></label></div>
+      <p class="read" id="sUnit">ใส่จำนวนและยอดเงินเพื่อดูราคาต่อซอง</p>
+      <label class="chk"><input id="sCost" type="checkbox" checked> ใช้ราคานี้เป็นต้นทุนต่อซองใหม่</label>
+      <h3 class="h3s" style="margin-top:0">จ่ายด้วย</h3><div class="chips"><button class="chip" data-act="pickIn" data-k="pay" data-id="cash" aria-pressed="${s.pay === 'cash'}">เงินสด</button><button class="chip" data-act="pickIn" data-k="pay" data-id="transfer" aria-pressed="${s.pay === 'transfer'}">โอน</button></div>
+      <button class="btn red" data-act="saveStockIn">บันทึกรับของเข้า</button>` : '<p class="empty">ยังไม่มีสินค้า เพิ่มสินค้าในแท็บสต็อกก่อน</p>');
+  } else if (s.type === 'close') {
+    const c = cashToday();
+    html = shell('ปิดยอดวันนี้', `<div class="cmp"><span>ขายเงินสดวันนี้</span><span>${B(c.sales)}</span><span>จ่ายเงินสดวันนี้</span><span>−${B(c.out)}</span></div>
+      <div class="row2"><label class="f">เงินทอนตั้งต้นเมื่อเช้า<input id="cOpen" type="number" inputmode="decimal" min="0" value="${S.cfg.float || 0}"></label><label class="f">นับเงินได้จริง<input id="cCount" type="number" inputmode="decimal" min="0" placeholder="0"></label></div>
+      <div class="change"><span id="cLabel">เงินที่ควรมีในลิ้นชัก</span><b id="cVal">${signB((S.cfg.float || 0) + c.sales - c.out)}</b></div>
+      <button class="btn red" data-act="saveClose">บันทึกปิดยอด</button>`);
+  } else if (s.type === 'expCats') {
+    html = shell('หมวดรายจ่าย', `<p class="read" style="margin-top:0">หมวดแบบประจำจะขึ้นเตือนทุกเดือนจนกว่าจะบันทึก</p>
+      <div class="erow ehead"><span>ชื่อหมวด</span><span>ประเภท</span><span>ยอดปกติ</span><span></span></div><div id="rows">${s.rows.map(expCatRow).join('')}</div>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มหมวด</button><button class="btn red" data-act="saveExpCats">บันทึกหมวดรายจ่าย</button>`);
   } else if (s.type === 'confirm') {
     html = shell(s.title, `<p>${esc(s.text)}</p><div class="row2"><button class="btn" data-act="close">ไม่ทำ</button><button class="btn red" data-act="${s.act}">${esc(s.yes)}</button></div>`);
   }
@@ -866,6 +990,7 @@ function shrinkImage(file) {
 }
 const topRow = t => `<div class="erow"><input class="in" data-k="name" value="${esc(t.name || '')}" placeholder="เช่น ไข่ต้ม" data-rid="${esc(t.id || '')}"><input class="in" data-k="price" type="number" inputmode="decimal" value="${t.price ?? ''}"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${t.cost ?? ''}"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
 const bulkRow = p => `<div class="erow e5"><input class="in" data-k="name" value="${esc(p.name || '')}" placeholder="ชื่อสินค้า" data-rid="${esc(p.id || '')}" aria-label="ชื่อสินค้า"><input class="in" data-k="price" type="number" inputmode="decimal" value="${p.price ?? ''}" aria-label="ราคาขาย"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${p.cost ?? ''}" aria-label="ต้นทุน"><input class="in" data-k="stock" type="number" inputmode="numeric" value="${p.stock ?? ''}" aria-label="สต็อก"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
+const expCatRow = c => `<div class="erow"><input class="in" data-k="name" value="${esc(c.name || '')}" placeholder="เช่น ค่าแรง" data-rid="${esc(c.id || '')}" aria-label="ชื่อหมวด"><select class="in" data-k="fixed" aria-label="ประเภท"><option value="0" ${!c.fixed ? 'selected' : ''}>ตามจริง</option><option value="1" ${c.fixed ? 'selected' : ''}>ประจำ</option></select><input class="in" data-k="amt" type="number" inputmode="decimal" value="${c.amt || ''}" placeholder="0" aria-label="ยอดปกติ"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
 const promoRow = p => `<div class="erow"><input class="in" data-k="name" value="${esc(p.name || '')}" placeholder="เช่น ลดนักเรียน" data-rid="${esc(p.id || '')}"><input class="in" data-k="val" type="number" inputmode="decimal" value="${p.val ?? ''}"><select class="in" data-k="type"><option value="pct" ${p.type !== 'baht' ? 'selected' : ''}>%</option><option value="baht" ${p.type === 'baht' ? 'selected' : ''}>บาท</option></select><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
 function readRows() {
   return [...document.querySelectorAll('#rows .erow')].map(r => {
@@ -873,6 +998,17 @@ function readRows() {
     r.querySelectorAll('[data-k]').forEach(el => o[el.dataset.k] = el.value);
     return o;
   });
+}
+function updateStockIn() {
+  const q = N(($('#sQty') || {}).value), a = N(($('#sAmt') || {}).value), el = $('#sUnit');
+  if (el) el.textContent = q > 0 && a > 0 ? `ตกซองละ ${B(Math.round(a / q * 100) / 100)} ${(() => { const p = prod($('#sProd').value); return p ? '(ต้นทุนเดิม ' + B(p.cost) + ')' : ''; })()}` : 'ใส่จำนวนและยอดเงินเพื่อดูราคาต่อซอง';
+}
+function updateClose() {
+  const c = cashToday(), exp = N($('#cOpen').value) + c.sales - c.out, cnt = $('#cCount').value;
+  if (cnt === '') { $('#cLabel').textContent = 'เงินที่ควรมีในลิ้นชัก'; $('#cVal').textContent = signB(exp); return; }
+  const d = N(cnt) - exp;
+  $('#cLabel').textContent = d === 0 ? 'ตรงพอดี' : d > 0 ? 'เงินเกิน' : 'เงินขาด';
+  $('#cVal').textContent = B(Math.abs(d));
 }
 function updateChange() {
   const el = $('#recv'); if (!el) return;
@@ -971,18 +1107,66 @@ async function exportBackup() {
   Object.keys(days).sort().forEach(k => (days[k].bills || []).forEach(b => bills.push([k, new Date(b.t).toTimeString().slice(0, 5),
     b.items.map(l => `${l.n}${l.tops && l.tops.length ? ' (' + l.tops.map(t => t.n).join('+') + ')' : ''} x${l.q}`).join('; '),
     b.sub, b.disc || 0, b.free || 0, b.total, b.cost || 0, b.total - (b.cost || 0), b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์', b.mn || '', b.earn || 0, b.red || 0, b.void ? 'ยกเลิก' : b.demo ? 'ตัวอย่าง' : 'ขายแล้ว'])));
+  let expAll = S.exp;
+  if (db) { try { const snap = await db.collection('expenses').get(); const all = {}; snap.docs.forEach(d => all[d.id] = d.data()); Object.keys(S.exp).forEach(k => all[k] = S.exp[k]); expAll = all; } catch (e) {} }
+  const exps = [['วันที่', 'หมวด', 'รายละเอียด', 'จำนวนเงิน', 'จ่ายด้วย', 'นับเป็นรายจ่ายร้าน']];
+  Object.keys(expAll).sort().forEach(k => (expAll[k].items || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).forEach(i => exps.push([i.date, catName(i),
+    i.kind === 'stock' ? `${i.pn} ${i.qty} ซอง ซองละ ${i.unit}` : (i.note || ''), i.amt, i.pay === 'transfer' ? 'โอน' : 'เงินสด', i.kind === 'stock' ? 'ไม่ (ต้นทุนเส้น)' : 'ใช่'])));
   const mems = [['ชื่อ', 'เบอร์โทร', 'เดือนเกิด', 'แต้มสะสม', 'ยอดซื้อรวม', 'จำนวนครั้ง', 'มาล่าสุด']]
     .concat(S.mem.map(m => [m.name, String(m.phone), m.bm ? TH_MF[m.bm - 1] : '', m.pts || 0, m.spent || 0, m.visits || 0, m.last || '']));
   try {
     const wb = XLSX.utils.book_new();
-    [['สินค้า', prods], ['ท็อปปิ้ง', tops], ['บิล', bills], ['สมาชิก', mems]].forEach(([n, a]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), n));
+    [['สินค้า', prods], ['ท็อปปิ้ง', tops], ['บิล', bills], ['รายจ่าย', exps], ['สมาชิก', mems]].forEach(([n, a]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), n));
     await dl.save({ filename: `สำรองข้อมูลร้าน-${today()}.xlsx`, data: XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) });
   } catch (e) { if (!e || e.code !== 'declined') toast('สำรองข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง'); }
 }
 function backToCart() { closeSheet(); render(); if (S.cart.length && window.matchMedia('(max-width:959px)').matches) openSheet({ type: 'cart' }); }
 
-const RO_BLOCK = new Set(['pick', 'editProd', 'bulk', 'stk', 'newMem', 'editMem', 'editTops', 'editPromos', 'editShop', 'editLoy', 'askVoid', 'askClearDemo', 'commit', 'saveProd', 'delProd', 'saveBulk', 'saveMem', 'doDelMem', 'saveTops', 'savePromos', 'saveShop', 'saveLoy', 'doVoid', 'doClearDemo', 'setPP']);
+const RO_BLOCK = new Set(['newExp', 'saveExp', 'newStockIn', 'saveStockIn', 'askDelExp', 'doDelExp', 'closeDay', 'saveClose', 'editExpCats', 'saveExpCats', 'pick', 'editProd', 'bulk', 'stk', 'newMem', 'editMem', 'editTops', 'editPromos', 'editShop', 'editLoy', 'askVoid', 'askClearDemo', 'commit', 'saveProd', 'delProd', 'saveBulk', 'saveMem', 'doDelMem', 'saveTops', 'savePromos', 'saveShop', 'saveLoy', 'doVoid', 'doClearDemo', 'setPP']);
 const ACT = {
+  expM: el => { S.expM = el.dataset.id; render(); },
+  pickIn: el => { S.sheet[el.dataset.k] = el.dataset.id; el.parentNode.querySelectorAll('[aria-pressed]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); },
+  newExp: el => { const c = el.dataset.cat ? catOf(el.dataset.cat) : null; openSheet({ type: 'exp', cat: c ? c.id : '', amt: c && c.amt ? c.amt : '', pay: 'cash', date: today() }); },
+  saveExp: () => {
+    const s = S.sheet, amt = N($('#eAmt').value), date = $('#eDate').value || today();
+    if (amt <= 0) return toast('ใส่จำนวนเงินก่อน');
+    if (!s.cat) return toast('เลือกหมวดรายจ่ายก่อน');
+    const mk = monthOf(date), e = S.exp[mk] || (S.exp[mk] = { month: mk, items: [] });
+    e.items.push({ id: uid('x'), date, cat: s.cat, amt, note: $('#eNote').value.trim(), pay: s.pay, t: new Date().toISOString() });
+    saveExp(mk); closeSheet(); render(); toast(`บันทึก${catOf(s.cat).name} ${B(amt)} แล้ว`);
+  },
+  newStockIn: () => openSheet({ type: 'stockIn', pay: 'cash' }),
+  saveStockIn: () => {
+    const s = S.sheet, p = prod($('#sProd').value), qty = Math.round(N($('#sQty').value)), amt = N($('#sAmt').value);
+    if (!p) return; if (qty <= 0) return toast('ใส่จำนวนซองก่อน'); if (amt <= 0) return toast('ใส่ยอดเงินที่จ่ายก่อน');
+    const unit = Math.round(amt / qty * 100) / 100, date = today(), mk = monthOf(date);
+    p.stock = (p.stock || 0) + qty; if ($('#sCost').checked) p.cost = unit;
+    const e = S.exp[mk] || (S.exp[mk] = { month: mk, items: [] });
+    e.items.push({ id: uid('x'), kind: 'stock', date, cat: 'stock', prod: p.id, pn: p.name, qty, amt, unit, pay: s.pay, t: new Date().toISOString() });
+    saveCfg(); saveExp(mk); closeSheet(); render(); toast(`รับ${p.name} ${qty} ซองแล้ว สต็อกเป็น ${p.stock}`);
+  },
+  askDelExp: el => openSheet({ type: 'confirm', title: 'ลบรายการนี้', text: 'รายการจะหายจากรายจ่ายและสรุปยอด ถ้าเป็นการรับของเข้า สต็อกจะถูกหักคืน', yes: 'ลบรายการ', act: 'doDelExp', id: el.dataset.id, m: el.dataset.m }),
+  doDelExp: () => {
+    const { id, m } = S.sheet, e = S.exp[m], i = e && e.items.find(x => x.id === id);
+    if (!i) return closeSheet();
+    e.items = e.items.filter(x => x.id !== id);
+    if (i.kind === 'stock') { const p = prod(i.prod); if (p) { p.stock = Math.max(0, (p.stock || 0) - i.qty); saveCfg(); } }
+    saveExp(m); closeSheet(); render(); toast('ลบรายการแล้ว');
+  },
+  closeDay: () => openSheet({ type: 'close' }),
+  saveClose: () => {
+    const cnt = $('#cCount').value; if (cnt === '') return toast('ใส่ยอดเงินที่นับได้ก่อน');
+    const t = today(), c = cashToday(), opening = N($('#cOpen').value), expected = opening + c.sales - c.out, counted = N(cnt);
+    const d = S.days[t] || (S.days[t] = { date: t, bills: [] });
+    d.close = { opening, cashSales: c.sales, cashOut: c.out, expected, counted, diff: counted - expected, t: new Date().toISOString() };
+    S.cfg.float = opening; saveCfg(); saveDay(t); closeSheet(); render();
+    toast(d.close.diff === 0 ? 'ปิดยอดแล้ว เงินตรงพอดี' : `ปิดยอดแล้ว เงิน${d.close.diff > 0 ? 'เกิน' : 'ขาด'} ${B(Math.abs(d.close.diff))}`);
+  },
+  editExpCats: () => openSheet({ type: 'expCats', rows: clone(S.cfg.expCats) }),
+  saveExpCats: () => {
+    S.cfg.expCats = readRows().filter(r => r.name.trim()).map(r => ({ id: r.id || uid('c'), name: r.name.trim(), fixed: r.fixed === '1', amt: N(r.amt) }));
+    saveCfg(); closeSheet(); render(); toast('บันทึกหมวดรายจ่ายแล้ว');
+  },
   pickMem: () => openSheet({ type: 'mem', q: '' }),
   chooseMem: el => { keepRecv(); S.cm = el.dataset.id; S.redeem = false; if (S.sheet && S.sheet.type === 'mem') backToCart(); else { render(); renderSheet(); } },
   dropMem: () => { keepRecv(); S.cm = null; S.redeem = false; render(); renderSheet(); },
@@ -1100,6 +1284,8 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'recv') updateChange();
+  else if (t.id === 'sQty' || t.id === 'sAmt' || t.id === 'sProd') updateStockIn();
+  else if (t.id === 'cOpen' || t.id === 'cCount') updateClose();
   else if (t.classList.contains('mqi')) t.parentNode.querySelector('.mres').innerHTML = memFind(t.value);
   else if (t.id === 'mq' && S.sheet) { S.sheet.q = t.value; $('#mlist').innerHTML = memListHTML(t.value, 'chooseMem'); }
   else if (t.id === 'mq2') { S.mq = t.value; $('#mlist2').innerHTML = memListHTML(S.mq, 'viewMem'); }
