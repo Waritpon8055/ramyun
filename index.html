@@ -307,7 +307,8 @@ const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(
 const S = {
   ready: false, mode: 'loading', cfg: null, days: {},
   tab: 'sell', cat: 'ทั้งหมด', cart: [], disc: { type: 'none' },
-  range: 'today', sel: null, rankBy: 'qty', sheet: null, mem: [], cm: null, redeem: false, mq: '', imgs: {}, ro: false, offline: false, exp: {}, expM: 'cur'
+  range: 'today', sel: null, rankBy: 'qty', sheet: null, mem: [], cm: null, redeem: false, mq: '', imgs: {}, ro: false, offline: false, exp: {}, expM: 'cur',
+  base: { cfg: null, prod: {}, mem: {}, sale: {}, exp: {}, close: {} }
 };
 let db = null, dl = null, toastTimer = null;
 
@@ -341,18 +342,26 @@ const imgOf = p => (p && S.imgs[p.id]) || (p && p.img && IMG[p.img]) || '';
 const thumb = (p, name) => imgOf(p) ? `<img src="${imgOf(p)}" alt="">` : `<span class="noimg">${esc((name || '?').trim().charAt(0))}</span>`;
 
 /* ---------- persistence ---------- */
+/* Each record (product, member, bill, expense, day close) is its own row.
+   Saves send only what changed: changed fields are merged, counters (stock, points)
+   are sent as +/- amounts, so sales from several devices add up instead of overwriting. */
 const W = {};
-function queueWrite(path, getData) {
+const J = JSON.stringify;
+function queueOp(path, getOp) {
   if (!db) return;
   const w = W[path] || (W[path] = { busy: false, dirty: false });
+  w.getOp = getOp;
   if (w.busy) { w.dirty = true; return; }
   w.busy = true;
   (async () => {
     do {
       w.dirty = false;
+      const op = w.getOp();
+      if (!op) continue;
       try {
-        const data = getData();
-        if (data === null) await db.doc(path).delete(); else await db.doc(path).set(clone(data));
+        const ref = db.doc(path);
+        const res = op.type === 'delete' ? await ref.delete() : op.type === 'apply' ? await ref.apply(op.patch, op.incr) : await ref.set(clone(op.data));
+        if (op.done) op.done(res);
       } catch (e) {
         writeFailed(e);
         if (e && e.code === 'unavailable') { S.offline = true; render(); await new Promise(r => setTimeout(r, 4000)); w.dirty = true; }
@@ -361,6 +370,70 @@ function queueWrite(path, getData) {
     w.busy = false;
     if (S.offline && !Object.values(W).some(x => x.busy)) { S.offline = false; render(); toast('บันทึกข้อมูลที่ค้างไว้เรียบร้อยแล้ว'); }
   })();
+}
+function queueWrite(path, getData) { queueOp(path, () => { const d = getData(); return d === null ? { type: 'delete' } : { type: 'set', data: d }; }); }
+const INCR = { prod: ['stock'], mem: ['pts', 'spent', 'visits'], sale: [], exp: [], close: [] };
+function diffOp(local, base, keys) {
+  const patch = {}, incr = {}; let n = 0;
+  new Set([...Object.keys(local), ...Object.keys(base)]).forEach(k => {
+    if (keys.includes(k)) { const d = (+local[k] || 0) - (+base[k] || 0); if (d) { incr[k] = d; n++; } }
+    else if (J(local[k]) !== J(base[k])) { patch[k] = local[k] === undefined ? null : local[k]; n++; }
+  });
+  return n ? { patch, incr } : null;
+}
+function merge3(local, base, remote, keys) {
+  new Set([...Object.keys(remote), ...Object.keys(base)]).forEach(k => {
+    if (keys.includes(k)) local[k] = Math.max(0, (+local[k] || 0) + (+remote[k] || 0) - (+base[k] || 0));
+    else if (J(local[k]) === J(base[k])) { if (remote[k] === undefined || remote[k] === null && base[k] === undefined) delete local[k]; else local[k] = clone(remote[k]); }
+  });
+  return local;
+}
+const findLocal = {
+  prod: id => S.cfg.products.find(p => p.id === id),
+  mem: id => S.mem.find(m => m.id === id),
+  sale: id => { for (const k in S.days) { const b = (S.days[k].bills || []).find(x => x.id === id); if (b) return b; } return null; },
+  exp: id => { for (const k in S.exp) { const i = (S.exp[k].items || []).find(x => x.id === id); if (i) return i; } return null; },
+  close: date => (S.days[date] || {}).close || null
+};
+const PREFIX = { prod: 'product/', mem: 'member/', sale: 'sale/', exp: 'exp/', close: 'close/' };
+function keyFor(kind, id, local) {
+  const b = S.base[kind][id];
+  if (b && b._key) return b._key;
+  return (kind === 'sale' || kind === 'exp') ? (local ? local.date : '0000-00-00') + '_' + id : id;
+}
+function syncRecord(kind, id) {
+  const path = PREFIX[kind] + keyFor(kind, id, findLocal[kind](id)), keys = INCR[kind];
+  queueOp(path, () => {
+    const local = findLocal[kind](id), base = S.base[kind][id];
+    if (!local && !base) return null;
+    if (!local) return { type: 'delete', done: () => { delete S.base[kind][id]; } };
+    const key = path.slice(PREFIX[kind].length);
+    const strip = o => { const c = clone(o); delete c._key; return c; };
+    if (!base || !keys.length) {
+      if (base && J(strip(local)) === J(strip(base))) return null;
+      const data = strip(local);
+      return { type: 'set', data, done: () => { S.base[kind][id] = { ...clone(data), _key: key }; } };
+    }
+    const d = diffOp(strip(local), strip(base), keys);
+    if (!d) return null;
+    const expected = strip(base); Object.assign(expected, d.patch);
+    Object.keys(d.incr).forEach(k => expected[k] = Math.max(0, (+expected[k] || 0) + d.incr[k]));
+    return { type: 'apply', patch: d.patch, incr: d.incr, done: srv => {
+      const now = findLocal[kind](id);
+      if (srv && now) merge3(now, expected, srv, keys);
+      S.base[kind][id] = { ...clone(srv || expected), _key: key };
+    } };
+  });
+}
+function onRemote(kind, key, data, removed, addLocal, removeLocal) {
+  const id = kind === 'close' ? key : (data && data.id) || (Object.keys(S.base[kind]).find(i => S.base[kind][i]._key === key));
+  if (!id) return;
+  const w = W[PREFIX[kind] + key];
+  if (w && w.busy) return;
+  const base = S.base[kind][id], local = findLocal[kind](id), keys = INCR[kind];
+  if (removed) { if (!local || !base || J(local) === J({ ...base, _key: undefined })) { if (local) removeLocal(id); delete S.base[kind][id]; } return; }
+  if (!local) addLocal(clone(data)); else merge3(local, base ? (({ _key, ...b }) => b)(base) : {}, data, keys);
+  S.base[kind][id] = { ...clone(data), _key: key };
 }
 function writeFailed(e) {
   const code = e && e.code;
@@ -371,11 +444,23 @@ function writeFailed(e) {
       : 'ยังบันทึกไม่ได้ ระบบจะลองใหม่ให้เองเมื่อเน็ตกลับมา');
 }
 let cfgTimer = null;
-function saveCfg() { clearTimeout(cfgTimer); cfgTimer = setTimeout(() => { cfgTimer = null; queueWrite('config/shop', () => S.cfg); }, 350); }
+const cfgData = c => { const o = { ...c }; delete o.products; return clone(o); };
+function saveCfg() {
+  clearTimeout(cfgTimer);
+  cfgTimer = setTimeout(() => {
+    cfgTimer = null;
+    queueOp('config/shop', () => { const d = cfgData(S.cfg); if (S.base.cfg && J(d) === J(S.base.cfg)) return null; return { type: 'set', data: d, done: () => { S.base.cfg = d; } }; });
+    new Set([...S.cfg.products.map(p => p.id), ...Object.keys(S.base.prod)]).forEach(id => syncRecord('prod', id));
+  }, 350);
+}
 function saveImg(id) { queueWrite('images/' + id, () => S.imgs[id] ? { data: S.imgs[id] } : null); }
-function saveMem() { queueWrite('members/all', () => ({ list: S.mem })); }
-function saveDay(k) { queueWrite('days/' + k, () => { const d = S.days[k]; return d && (d.bills.length || d.close) ? d : null; }); }
-function saveExp(mk) { queueWrite('expenses/' + mk, () => { const e = S.exp[mk]; return e && e.items.length ? e : null; }); }
+function saveMem() { new Set([...S.mem.map(m => m.id), ...Object.keys(S.base.mem)]).forEach(id => syncRecord('mem', id)); }
+function saveDay(k) {
+  const d = S.days[k] || { bills: [] };
+  new Set([...d.bills.map(b => b.id), ...Object.keys(S.base.sale).filter(id => (S.base.sale[id]._key || '').startsWith(k + '_'))]).forEach(id => syncRecord('sale', id));
+  if (d.close || S.base.close[k]) syncRecord('close', k);
+}
+function saveExp(mk) { new Set([...expItems(mk).map(i => i.id), ...Object.keys(S.base.exp).filter(id => (S.base.exp[id].date || '').startsWith(mk))]).forEach(id => syncRecord('exp', id)); }
 
 /* ---------- Supabase storage ----------
    Every record is one row in table "docs": path ("config/shop", "days/2026-10-19",
@@ -395,7 +480,9 @@ function makeDb(client) {
   const doc = path => ({
     id: path.split('/').pop(), path,
     async get() { const { data, error } = await client.from('docs').select('data').eq('path', path).maybeSingle(); if (error) throw sbErr(error); return snapOf(path, data ? data.data : undefined); },
-    async set(body) { const { error } = await client.from('docs').upsert({ path, data: body, updated_at: new Date().toISOString() }); if (error) throw sbErr(error); },
+    async set(body) { const { error } = await client.from('docs').upsert({ path, data: body, updated_at: new Date().toISOString() }); if (error) throw sbErr(error); return body; },
+    // merge fields and add to counters in one database step, so two devices never overwrite each other
+    async apply(patch, incr) { const { data, error } = await client.rpc('docs_apply', { p_path: path, p_patch: patch, p_incr: incr }); if (error) throw sbErr(error); return data; },
     async delete() { const { error } = await client.from('docs').delete().eq('path', path); if (error) throw sbErr(error); },
     onSnapshot(next, fail) {
       let live = true;
@@ -467,12 +554,40 @@ async function init() {
   if (!db) { S.cfg = normCfg(clone(DEFAULT_CFG)); S.mode = 'memory'; S.ready = true; render(); return; }
   S.mode = 'db';
   const fail = () => { if (!S.ready) { S.cfg = normCfg(clone(DEFAULT_CFG)); S.mode = 'memory'; S.ready = true; db = null; render(); } };
+  const loaded = { cfg: false, prod: false };
+  const ready = () => {
+    if (S.ready || !loaded.cfg || !loaded.prod) return;
+    S.cfg.products.sort((a, b) => (a.ord || 0) - (b.ord || 0));
+    S.cfg.products.forEach(p => { if (p.cat && !S.cfg.prodCats.includes(p.cat)) S.cfg.prodCats.push(p.cat); });
+    S.ready = true; render();
+  };
+  S.cfg = normCfg({}); S.cfg.products = [];
   db.doc('config/shop').onSnapshot(snap => {
     const w = W['config/shop'];
     if (S.ready && ((w && w.busy) || cfgTimer)) return;
-    S.cfg = normCfg(snap.exists ? clone(snap.data()) : clone(DEFAULT_CFG));
-    S.ready = true; render();
+    const fresh = normCfg(snap.exists ? clone(snap.data()) : clone(DEFAULT_CFG));
+    fresh.products = S.cfg.products;
+    S.cfg = fresh; S.base.cfg = cfgData(fresh);
+    loaded.cfg = true; ready(); if (S.ready) render();
   }, fail);
+  const listen = (coll, kind, addLocal, removeLocal, from) => {
+    const q = from ? db.collection(coll).where('date', '>=', from) : db.collection(coll);
+    q.onSnapshot(snap => {
+      snap.docChanges().forEach(ch => onRemote(kind, ch.doc.id, ch.type === 'removed' ? null : ch.doc.data(), ch.type === 'removed', addLocal, removeLocal));
+      if (kind === 'prod') { loaded.prod = true; ready(); }
+      if (S.ready) render();
+    }, kind === 'prod' ? fail : () => {});
+  };
+  const [y, m] = parts(today());
+  const cutoff = dkey(new Date(y, m - 6, 1));
+  const dayOf = k => S.days[k] || (S.days[k] = { date: k, bills: [] });
+  listen('product', 'prod', p => S.cfg.products.push(p), id => { S.cfg.products = S.cfg.products.filter(p => p.id !== id); });
+  listen('member', 'mem', mm => S.mem.push(mm), id => { S.mem = S.mem.filter(x => x.id !== id); });
+  listen('sale', 'sale', b => { const d = dayOf(b.date); d.bills.push(b); d.bills.sort((a, c) => a.t < c.t ? -1 : 1); },
+    id => { for (const k in S.days) S.days[k].bills = S.days[k].bills.filter(b => b.id !== id); }, cutoff);
+  listen('close', 'close', c => { dayOf(c.date).close = c; }, k => { if (S.days[k]) delete S.days[k].close; }, cutoff);
+  listen('exp', 'exp', i => { const mk = monthOf(i.date), e = S.exp[mk] || (S.exp[mk] = { month: mk, items: [] }); e.items.push(i); },
+    id => { for (const k in S.exp) S.exp[k].items = S.exp[k].items.filter(i => i.id !== id); }, cutoff);
   db.collection('images').onSnapshot(snap => {
     snap.docChanges().forEach(ch => {
       const id = ch.doc.id, w = W['images/' + id];
@@ -480,35 +595,7 @@ async function init() {
       if (ch.type === 'removed') delete S.imgs[id];
       else { const v = ch.doc.data(); if (v && v.data) S.imgs[id] = v.data; }
     });
-    render();
-  }, () => {});
-  db.doc('members/all').onSnapshot(snap => {
-    const w = W['members/all'];
-    if (w && w.busy) return;
-    const v = snap.exists ? snap.data() : null;
-    S.mem = v && Array.isArray(v.list) ? clone(v.list) : [];
-    render();
-  }, () => {});
-  const [y, m] = parts(today());
-  const cutoff = dkey(new Date(y, m - 6, 1));
-  db.collection('expenses').where('month', '>=', cutoff.slice(0, 7)).onSnapshot(snap => {
-    snap.docChanges().forEach(ch => {
-      const id = ch.doc.id, w = W['expenses/' + id];
-      if (w && w.busy) return;
-      if (ch.type === 'removed') { delete S.exp[id]; return; }
-      const v = clone(ch.doc.data()); if (!Array.isArray(v.items)) v.items = []; S.exp[id] = v;
-    });
-    render();
-  }, () => {});
-  db.collection('days').where('date', '>=', cutoff).onSnapshot(snap => {
-    snap.docs.forEach(d => {
-      const w = W['days/' + d.id];
-      if (w && w.busy) return;
-      const v = clone(d.data());
-      if (!Array.isArray(v.bills)) v.bills = [];
-      S.days[d.id] = v;
-    });
-    render();
+    if (S.ready) render();
   }, () => {});
 }
 
@@ -1109,6 +1196,7 @@ function commitSale() {
     mb.pts = Math.max(0, (mb.pts || 0) + earn - bill.red); mb.spent = (mb.spent || 0) + tot; mb.visits = (mb.visits || 0) + 1; mb.last = k;
     saveMem();
   }
+  bill.date = k;
   day.bills.push(bill);
   items.forEach(l => { const p = prod(l.p); if (p) p.stock = Math.max(0, (p.stock || 0) - l.q); });
   saveDay(k); saveCfg();
@@ -1146,7 +1234,7 @@ async function exportCSV() {
 async function exportBackup() {
   if (typeof XLSX === 'undefined') return exportCSV();
   let days = S.days;
-  if (db) { try { const snap = await db.collection('days').limit(1000).get(); const all = {}; snap.docs.forEach(d => all[d.id] = d.data()); Object.keys(S.days).forEach(k => all[k] = S.days[k]); days = all; } catch (e) {} }
+  if (db) { try { const snap = await db.collection('sale').get(); const all = {}; snap.docs.forEach(d => { const b = d.data(); (all[b.date] || (all[b.date] = { date: b.date, bills: [] })).bills.push(b); }); Object.keys(S.days).forEach(k => all[k] = S.days[k]); days = all; } catch (e) {} }
   const prods = [['ชื่อสินค้า', 'หมวด', 'ราคาขาย', 'ต้นทุน', 'กำไรต่อชาม', 'สต็อก', 'เตือนเมื่อเหลือ', 'วันหมดอายุ', 'สถานะ']]
     .concat(S.cfg.products.map(p => [p.name, p.cat || '', p.price, p.cost || 0, p.price - (p.cost || 0), p.stock || 0, p.low ?? 5, p.exp || '', p.active === false ? 'พักขาย' : 'ขายอยู่']));
   const tops = [['ท็อปปิ้ง', 'ราคา', 'ต้นทุน']].concat(S.cfg.toppings.map(t => [t.name, t.price, t.cost || 0]));
@@ -1155,7 +1243,7 @@ async function exportBackup() {
     b.items.map(l => `${l.n}${l.tops && l.tops.length ? ' (' + l.tops.map(t => t.n).join('+') + ')' : ''} x${l.q}`).join('; '),
     b.sub, b.disc || 0, b.free || 0, b.total, b.cost || 0, b.total - (b.cost || 0), b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์', b.mn || '', b.earn || 0, b.red || 0, b.void ? 'ยกเลิก' : b.demo ? 'ตัวอย่าง' : 'ขายแล้ว'])));
   let expAll = S.exp;
-  if (db) { try { const snap = await db.collection('expenses').get(); const all = {}; snap.docs.forEach(d => all[d.id] = d.data()); Object.keys(S.exp).forEach(k => all[k] = S.exp[k]); expAll = all; } catch (e) {} }
+  if (db) { try { const snap = await db.collection('exp').get(); const all = {}; snap.docs.forEach(d => { const i = d.data(), mk = monthOf(i.date); (all[mk] || (all[mk] = { month: mk, items: [] })).items.push(i); }); Object.keys(S.exp).forEach(k => all[k] = S.exp[k]); expAll = all; } catch (e) {} }
   const exps = [['วันที่', 'รายการ', 'จำนวน', 'ราคาต่อชิ้น', 'จำนวนเงิน', 'จ่ายด้วย', 'นับเป็นรายจ่ายร้าน']];
   Object.keys(expAll).sort().forEach(k => (expAll[k].items || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).forEach(i => {
     if (i.kind === 'stock') exps.push([i.date, 'รับเส้นเข้าสต็อก: ' + i.pn, i.qty, i.unit, i.amt, i.pay === 'transfer' ? 'โอน' : 'เงินสด', 'ไม่ (ต้นทุนเส้น)']);
@@ -1229,7 +1317,7 @@ const ACT = {
     const cnt = $('#cCount').value; if (cnt === '') return toast('ใส่ยอดเงินที่นับได้ก่อน');
     const t = today(), c = cashToday(), opening = N($('#cOpen').value), expected = opening + c.sales - c.out, counted = N(cnt);
     const d = S.days[t] || (S.days[t] = { date: t, bills: [] });
-    d.close = { opening, cashSales: c.sales, cashOut: c.out, expected, counted, diff: counted - expected, t: new Date().toISOString() };
+    d.close = { date: t, opening, cashSales: c.sales, cashOut: c.out, expected, counted, diff: counted - expected, t: new Date().toISOString() };
     S.cfg.float = opening; saveCfg(); saveDay(t); closeSheet(); render();
     toast(d.close.diff === 0 ? 'ปิดยอดแล้ว เงินตรงพอดี' : `ปิดยอดแล้ว เงิน${d.close.diff > 0 ? 'เกิน' : 'ขาด'} ${B(Math.abs(d.close.diff))}`);
   },
@@ -1305,7 +1393,7 @@ const ACT = {
     const old = S.cfg.products;
     S.cfg.products = readRows().filter(r => r.name.trim()).map(r => {
       const p = r.id && old.find(x => x.id === r.id), v = { name: r.name.trim(), price: N(r.price), cost: N(r.cost), stock: Math.max(0, Math.round(N(r.stock))) };
-      return p ? Object.assign(p, v) : { id: uid('p'), img: '', cat: ($('#bkCat') || {}).value || '', low: 5, exp: '', active: true, ...v };
+      return p ? Object.assign(p, v) : { id: uid('p'), ord: Date.now() + Math.random(), img: '', cat: ($('#bkCat') || {}).value || '', low: 5, exp: '', active: true, ...v };
     });
     S.cart = S.cart.filter(l => prod(l.p));
     old.filter(p => !S.cfg.products.includes(p)).forEach(p => { if (S.imgs[p.id]) { delete S.imgs[p.id]; saveImg(p.id); } });
@@ -1365,7 +1453,7 @@ const ACT = {
     if (cat === '__new') { cat = $('#pCatNew').value.trim(); if (!cat) return toast('ใส่ชื่อหมวดใหม่ก่อน'); if (!S.cfg.prodCats.includes(cat)) S.cfg.prodCats.push(cat); }
     const v = { name, cat, price: N($('#pPrice').value), cost: N($('#pCost').value), stock: Math.max(0, Math.round(N($('#pStock').value))), low: Math.max(0, Math.round(N($('#pLow').value))), exp: $('#pExp').value, active: $('#pActive').value === '1' };
     let id = s.id;
-    if (id) Object.assign(prod(id), v); else { id = uid('p'); S.cfg.products.push({ id, img: '', ...v }); }
+    if (id) Object.assign(prod(id), v); else { id = uid('p'); S.cfg.products.push({ id, img: '', ord: Date.now(), ...v }); }
     if (s.img !== undefined) { if (s.img) S.imgs[id] = s.img; else { delete S.imgs[id]; prod(id).img = ''; } saveImg(id); }
     saveCfg(); closeSheet(); render(); toast('บันทึกสินค้าแล้ว');
   },

@@ -35,3 +35,21 @@ alter publication supabase_realtime add table public.docs;
 
 -- ใส่อีเมลเจ้าของร้าน (แก้เป็นอีเมลจริง แล้วรันบรรทัดนี้)
 -- insert into public.shop_owners (email) values ('owner@example.com');
+
+-- รวมฟิลด์และบวกลบตัวนับ (สต็อก แต้ม) ในคำสั่งเดียว หลายเครื่องบันทึกพร้อมกันได้โดยไม่ทับกัน
+create or replace function public.docs_apply(p_path text, p_patch jsonb, p_incr jsonb)
+returns jsonb language plpgsql security invoker set search_path = public as $$
+declare cur jsonb; k text; v numeric;
+begin
+  insert into public.docs (path, data) values (p_path, '{}'::jsonb) on conflict (path) do nothing;
+  select data into cur from public.docs where path = p_path for update;
+  if cur is null then raise exception 'not allowed' using errcode = '42501'; end if;
+  cur := cur || coalesce(p_patch, '{}'::jsonb);
+  for k, v in select key, value::numeric from jsonb_each_text(coalesce(p_incr, '{}'::jsonb)) loop
+    cur := jsonb_set(cur, array[k], to_jsonb(greatest(0, coalesce((cur ->> k)::numeric, 0) + v)));
+  end loop;
+  update public.docs set data = cur, updated_at = now() where path = p_path;
+  return cur;
+end $$;
+revoke execute on function public.docs_apply(text, jsonb, jsonb) from public, anon;
+grant execute on function public.docs_apply(text, jsonb, jsonb) to authenticated;
