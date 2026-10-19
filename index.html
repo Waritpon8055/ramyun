@@ -244,6 +244,7 @@ label.btn{cursor:pointer}
 .prog{display:block;height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
 .prog i{display:block;height:100%;background:var(--yellow);box-shadow:inset 0 0 0 1.5px var(--ink);border-radius:99px}
 .erow.e5{grid-template-columns:1.7fr 1fr 1fr .9fr 28px}
+.erow.e2{grid-template-columns:1fr 36px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
 .stats div{background:var(--sunk);border-radius:12px;padding:10px 12px;min-width:0}
 .stats span{display:block;font-size:12.5px;color:var(--muted)}
@@ -317,6 +318,11 @@ function defaultBuyItems(oldCats) {
     ['b-kimchi', 'กิมจิ', false], ['b-tteok', 'ต๊อกบกกี', false], ['b-cup', 'ถ้วยและตะเกียบ', false], ['b-bag', 'ถุงหิ้ว', false]]
     .map(([id, name, fixed]) => ({ id, name, fixed, price: amtOf(id), uses: 0 }));
 }
+function prodCatsOf(c) {
+  const list = Array.isArray(c.prodCats) ? c.prodCats.slice() : [];
+  (c.products || []).forEach(p => { if (p.cat && !list.includes(p.cat)) list.push(p.cat); });
+  return list;
+}
 function normCfg(c) {
   c = c || {};
   return {
@@ -325,6 +331,7 @@ function normCfg(c) {
     toppings: Array.isArray(c.toppings) ? c.toppings : [],
     promos: Array.isArray(c.promos) ? c.promos : [],
     loyalty: { per: +(c.loyalty || {}).per || 60, need: +(c.loyalty || {}).need || 10, bday: +(c.loyalty || {}).bday || 2 },
+    prodCats: prodCatsOf(c),
     buyItems: Array.isArray(c.buyItems) ? c.buyItems : defaultBuyItems(c.expCats),
     float: +c.float || 0
   };
@@ -576,7 +583,7 @@ function render() {
 function viewSell() {
   const ps = S.cfg.products.filter(p => p.active !== false);
   if (!ps.length) return '<p class="empty">ยังไม่มีสินค้าในร้าน ไปที่แท็บสต็อกแล้วกด “เพิ่มสินค้า”</p>';
-  const cats = ['ทั้งหมด', ...new Set(ps.map(p => p.cat).filter(Boolean))];
+  const cats = ['ทั้งหมด', ...S.cfg.prodCats.filter(c => ps.some(p => p.cat === c))];
   if (!cats.includes(S.cat)) S.cat = 'ทั้งหมด';
   const list = ps.filter(p => S.cat === 'ทั้งหมด' || p.cat === S.cat);
   const tiles = list.map(p => {
@@ -840,6 +847,8 @@ function viewSet() {
     <div class="setrow"><div class="tx"><small>${c.promos.length ? esc(c.promos.map(promoLabel).join(', ')) : 'ยังไม่มีโปรโมชัน'}</small></div><button class="btn sm" data-act="editPromos">แก้ไข</button></div></section>
   <section class="card"><h2>สมาชิกและแต้ม</h2>
     <div class="setrow"><div class="tx"><small>ทุก ${B(c.loyalty.per)} ได้ 1 แต้ม ครบ ${c.loyalty.need} แต้มแลกฟรี 1 ชาม เดือนเกิดได้แต้ม x${c.loyalty.bday}</small></div><button class="btn sm" data-act="editLoy">แก้ไข</button></div></section>
+  <section class="card"><h2>หมวดหมู่สินค้า</h2>
+    <div class="setrow"><div class="tx"><small>${c.prodCats.length ? esc(c.prodCats.join(', ')) : 'ยังไม่มีหมวด'}</small></div><button class="btn sm" data-act="editProdCats">แก้ไข</button></div></section>
   <section class="card"><h2>ของที่ซื้อบ่อย</h2>
     <div class="setrow"><div class="tx"><small>${esc(c.buyItems.map(x => x.name + (x.fixed ? ' (ประจำ)' : '')).join(', ')) || 'ยังไม่มีรายการ'}</small></div><button class="btn sm" data-act="editBuyItems">แก้ไข</button></div></section>
   <section class="card"><h2>ข้อมูล</h2>
@@ -890,9 +899,9 @@ function renderSheet() {
     }
   } else if (s.type === 'prod') {
     const p = s.id ? prod(s.id) : { name: '', cat: '', price: '', cost: '', stock: 0, low: 5, exp: '', active: true };
-    const cats = [...new Set(S.cfg.products.map(x => x.cat).filter(Boolean))];
     html = shell(s.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า', `<div id="pImgBox">${photoBlock(s)}</div><label class="f">ชื่อสินค้า<input id="pName" value="${esc(p.name)}"></label>
-      <label class="f">หมวด<input id="pCat" list="catList" value="${esc(p.cat || '')}"><datalist id="catList">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+      <label class="f">หมวด<select id="pCat">${['', ...S.cfg.prodCats].map(c => `<option value="${esc(c)}" ${c === (p.cat || '') ? 'selected' : ''}>${c ? esc(c) : 'ไม่มีหมวด'}</option>`).join('')}<option value="__new">+ เพิ่มหมวดใหม่</option></select></label>
+      <label class="f" id="pCatNewBox" hidden>ชื่อหมวดใหม่<input id="pCatNew" placeholder="เช่น ของทานเล่น"></label>
       <div class="row2"><label class="f">ราคาขายต่อชาม<input id="pPrice" type="number" inputmode="decimal" min="0" value="${p.price}"></label><label class="f">ต้นทุนต่อชาม<input id="pCost" type="number" inputmode="decimal" min="0" value="${p.cost}"></label></div>
       <div class="row2"><label class="f">สต็อก (ซอง)<input id="pStock" type="number" inputmode="numeric" min="0" value="${p.stock || 0}"></label><label class="f">เตือนเมื่อเหลือ<input id="pLow" type="number" inputmode="numeric" min="0" value="${p.low ?? 5}"></label></div>
       <label class="f">วันหมดอายุของล็อตที่ใกล้สุด<input id="pExp" type="date" value="${esc(p.exp || '')}"></label>
@@ -940,6 +949,7 @@ function renderSheet() {
       <button class="btn red" data-act="saveLoy">บันทึกกติกาแต้ม</button>`);
   } else if (s.type === 'bulk') {
     html = shell('กรอกสินค้าหลายรายการ', `<p class="read" style="margin-top:0">แก้ได้ทุกช่อง แถวที่ลบจะถูกลบจากร้านเมื่อกดบันทึก</p>
+      <label class="f">หมวดของสินค้าที่เพิ่มใหม่<select id="bkCat">${['', ...S.cfg.prodCats].map(c => `<option value="${esc(c)}">${c ? esc(c) : 'ไม่มีหมวด'}</option>`).join('')}</select></label>
       <div class="erow e5 ehead"><span>ชื่อสินค้า</span><span>ราคาขาย</span><span>ต้นทุน</span><span>สต็อก</span><span></span></div><div id="rows">${s.rows.map(bulkRow).join('')}</div>
       <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มแถว</button><button class="btn red" data-act="saveBulk">บันทึกสินค้าทั้งหมด</button>`);
   } else if (s.type === 'buy') {
@@ -978,6 +988,10 @@ function renderSheet() {
       <div class="change"><span>ยอดใหม่</span><b id="beTot">${B(Math.max(0, sub - free - (s.disc || 0)))}</b></div>
       <p class="read">ลดจำนวนเป็น 0 เพื่อเอารายการออก สต็อกและแต้มสมาชิกจะปรับตามให้</p>
       <button class="btn red" data-act="saveBill">บันทึกการแก้ไข</button>`);
+  } else if (s.type === 'prodCats') {
+    html = shell('หมวดหมู่สินค้า', `<p class="read" style="margin-top:0">เรียงตามลำดับที่จะแสดงในหน้าขาย เปลี่ยนชื่อแล้วสินค้าในหมวดจะย้ายตาม ลบหมวดแล้วสินค้าจะกลายเป็นไม่มีหมวด</p>
+      <div id="rows">${s.rows.map(r => `<div class="erow e2"><input class="in" data-k="name" value="${esc(r.name || '')}" placeholder="ชื่อหมวด" data-rid="${esc(r.id || '')}" aria-label="ชื่อหมวด"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`).join('')}</div>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มหมวด</button><button class="btn red" data-act="saveProdCats">บันทึกหมวดหมู่</button>`);
   } else if (s.type === 'buyItems') {
     html = shell('ของที่ซื้อบ่อย', `<p class="read" style="margin-top:0">ตั้งเป็น "ประจำ" ถ้าต้องจ่ายทุกเดือน ระบบจะเตือนจนกว่าจะบันทึก</p>
       <div class="erow ehead"><span>ชื่อ</span><span>ประเภท</span><span>ราคาล่าสุด</span><span></span></div><div id="rows">${s.rows.map(buyItemRow).join('')}</div>
@@ -1157,7 +1171,7 @@ async function exportBackup() {
 }
 function backToCart() { closeSheet(); render(); if (S.cart.length && window.matchMedia('(max-width:959px)').matches) openSheet({ type: 'cart' }); }
 
-const RO_BLOCK = new Set(['editExp', 'editBill', 'beq', 'saveBill', 'newBuy', 'buyChip', 'saveBuy', 'newStockIn', 'saveStockIn', 'askDelExp', 'doDelExp', 'closeDay', 'saveClose', 'editBuyItems', 'saveBuyItems', 'pick', 'editProd', 'bulk', 'stk', 'newMem', 'editMem', 'editTops', 'editPromos', 'editShop', 'editLoy', 'askVoid', 'askClearDemo', 'commit', 'saveProd', 'delProd', 'saveBulk', 'saveMem', 'doDelMem', 'saveTops', 'savePromos', 'saveShop', 'saveLoy', 'doVoid', 'doClearDemo', 'setPP']);
+const RO_BLOCK = new Set(['editProdCats', 'saveProdCats', 'editExp', 'editBill', 'beq', 'saveBill', 'newBuy', 'buyChip', 'saveBuy', 'newStockIn', 'saveStockIn', 'askDelExp', 'doDelExp', 'closeDay', 'saveClose', 'editBuyItems', 'saveBuyItems', 'pick', 'editProd', 'bulk', 'stk', 'newMem', 'editMem', 'editTops', 'editPromos', 'editShop', 'editLoy', 'askVoid', 'askClearDemo', 'commit', 'saveProd', 'delProd', 'saveBulk', 'saveMem', 'doDelMem', 'saveTops', 'savePromos', 'saveShop', 'saveLoy', 'doVoid', 'doClearDemo', 'setPP']);
 const ACT = {
   expM: el => { S.expM = el.dataset.id; render(); },
   pickIn: el => { S.sheet[el.dataset.k] = el.dataset.id; el.parentNode.querySelectorAll('[aria-pressed]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); },
@@ -1246,6 +1260,15 @@ const ACT = {
     Object.assign(b, { items, sub, free, disc, dl: disc ? (b.dl || 'ส่วนลด') : '', total, cost, pay: s.pay, recv: s.pay === 'cash' ? Math.max(b.recv || 0, total) : total, edited: new Date().toISOString() });
     saveDay(s.day); saveCfg(); closeSheet(); render(); toast(`แก้ไขบิลแล้ว ยอดใหม่ ${B(total)}`);
   },
+  editProdCats: () => openSheet({ type: 'prodCats', rows: S.cfg.prodCats.map(c => ({ id: c, name: c })) }),
+  saveProdCats: () => {
+    const rows = readRows().filter(r => r.name.trim()), list = [];
+    rows.forEach(r => { const n = r.name.trim(); if (!list.includes(n)) list.push(n); if (r.id && r.id !== n) S.cfg.products.forEach(p => { if (p.cat === r.id) p.cat = n; }); });
+    const kept = new Set(rows.map(r => r.id).filter(Boolean));
+    S.cfg.products.forEach(p => { if (p.cat && !list.includes(p.cat) && !kept.has(p.cat)) p.cat = ''; });
+    S.cfg.prodCats = list; if (!list.includes(S.cat)) S.cat = 'ทั้งหมด';
+    saveCfg(); closeSheet(); render(); toast('บันทึกหมวดหมู่สินค้าแล้ว');
+  },
   editBuyItems: () => openSheet({ type: 'buyItems', rows: clone(S.cfg.buyItems) }),
   saveBuyItems: () => {
     const old = S.cfg.buyItems;
@@ -1282,7 +1305,7 @@ const ACT = {
     const old = S.cfg.products;
     S.cfg.products = readRows().filter(r => r.name.trim()).map(r => {
       const p = r.id && old.find(x => x.id === r.id), v = { name: r.name.trim(), price: N(r.price), cost: N(r.cost), stock: Math.max(0, Math.round(N(r.stock))) };
-      return p ? Object.assign(p, v) : { id: uid('p'), img: '', cat: '', low: 5, exp: '', active: true, ...v };
+      return p ? Object.assign(p, v) : { id: uid('p'), img: '', cat: ($('#bkCat') || {}).value || '', low: 5, exp: '', active: true, ...v };
     });
     S.cart = S.cart.filter(l => prod(l.p));
     old.filter(p => !S.cfg.products.includes(p)).forEach(p => { if (S.imgs[p.id]) { delete S.imgs[p.id]; saveImg(p.id); } });
@@ -1338,7 +1361,9 @@ const ACT = {
   saveProd: () => {
     const s = S.sheet, name = $('#pName').value.trim();
     if (!name) return toast('ใส่ชื่อสินค้าก่อน');
-    const v = { name, cat: $('#pCat').value.trim(), price: N($('#pPrice').value), cost: N($('#pCost').value), stock: Math.max(0, Math.round(N($('#pStock').value))), low: Math.max(0, Math.round(N($('#pLow').value))), exp: $('#pExp').value, active: $('#pActive').value === '1' };
+    let cat = $('#pCat').value;
+    if (cat === '__new') { cat = $('#pCatNew').value.trim(); if (!cat) return toast('ใส่ชื่อหมวดใหม่ก่อน'); if (!S.cfg.prodCats.includes(cat)) S.cfg.prodCats.push(cat); }
+    const v = { name, cat, price: N($('#pPrice').value), cost: N($('#pCost').value), stock: Math.max(0, Math.round(N($('#pStock').value))), low: Math.max(0, Math.round(N($('#pLow').value))), exp: $('#pExp').value, active: $('#pActive').value === '1' };
     let id = s.id;
     if (id) Object.assign(prod(id), v); else { id = uid('p'); S.cfg.products.push({ id, img: '', ...v }); }
     if (s.img !== undefined) { if (s.img) S.imgs[id] = s.img; else { delete S.imgs[id]; prod(id).img = ''; } saveImg(id); }
@@ -1379,6 +1404,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', async e => {
   const t = e.target;
+  if (t.id === 'pCat') { $('#pCatNewBox').hidden = t.value !== '__new'; if (t.value === '__new') $('#pCatNew').focus(); return; }
   if (t.id !== 'pImg' || !t.files || !t.files[0] || !S.sheet || S.sheet.type !== 'prod') return;
   const sh = S.sheet;
   try { const d = await shrinkImage(t.files[0]); if (S.sheet !== sh) return; sh.img = d; $('#pImgBox').innerHTML = photoBlock(sh); }
