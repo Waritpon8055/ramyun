@@ -310,6 +310,13 @@ const S = {
 };
 let db = null, dl = null, toastTimer = null;
 
+function defaultBuyItems(oldCats) {
+  const amtOf = id => ((oldCats || []).find(x => x.id === id) || {}).amt || 0;
+  return [['c-rent', 'ค่าเช่า', true], ['c-elec', 'ค่าไฟ', true], ['c-water', 'ค่าน้ำ', true], ['c-gas', 'แก๊ส', false],
+    ['b-egg', 'ไข่ไก่', false], ['b-cheese', 'ชีสสไลซ์', false], ['b-sausage', 'ไส้กรอก', false], ['b-crab', 'ปูอัด', false],
+    ['b-kimchi', 'กิมจิ', false], ['b-tteok', 'ต๊อกบกกี', false], ['b-cup', 'ถ้วยและตะเกียบ', false], ['b-bag', 'ถุงหิ้ว', false]]
+    .map(([id, name, fixed]) => ({ id, name, fixed, price: amtOf(id), uses: 0 }));
+}
 function normCfg(c) {
   c = c || {};
   return {
@@ -318,11 +325,7 @@ function normCfg(c) {
     toppings: Array.isArray(c.toppings) ? c.toppings : [],
     promos: Array.isArray(c.promos) ? c.promos : [],
     loyalty: { per: +(c.loyalty || {}).per || 60, need: +(c.loyalty || {}).need || 10, bday: +(c.loyalty || {}).bday || 2 },
-    expCats: Array.isArray(c.expCats) ? c.expCats : [
-      { id: 'c-rent', name: 'ค่าเช่า', fixed: true, amt: 0 }, { id: 'c-elec', name: 'ค่าไฟ', fixed: true, amt: 0 },
-      { id: 'c-water', name: 'ค่าน้ำ', fixed: true, amt: 0 }, { id: 'c-gas', name: 'แก๊ส', fixed: false, amt: 0 },
-      { id: 'c-fresh', name: 'ของสดและท็อปปิ้ง', fixed: false, amt: 0 }, { id: 'c-supply', name: 'ของใช้สิ้นเปลือง', fixed: false, amt: 0 },
-      { id: 'c-other', name: 'อื่นๆ', fixed: false, amt: 0 }],
+    buyItems: Array.isArray(c.buyItems) ? c.buyItems : defaultBuyItems(c.expCats),
     float: +c.float || 0
   };
 }
@@ -690,10 +693,10 @@ function viewSum() {
   const expSum = allExp().filter(i => i.kind !== 'stock' && dset.has(i.date)).reduce((a, i) => a + i.amt, 0), net = profit - expSum;
   const monthCard = monthlyCard();
   const cash = bills.filter(b => b.pay === 'cash').reduce((a, b) => a + b.total, 0), qr = rev - cash;
-  const recent = all.sort((a, b) => b.t < a.t ? -1 : 1).slice(0, 12);
+  const recent = all.sort((a, b) => b.t < a.t ? -1 : 1).slice(0, 40);
   const billHTML = recent.length ? recent.map(b => `<div class="bill ${b.void ? 'void' : ''}"><div class="tx"><b>${S.range === 'today' ? '' : fmtDay(b.day) + ' '}${new Date(b.t).toTimeString().slice(0, 5)}</b> ${b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์'}${b.mn ? ' สมาชิก ' + esc(b.mn) : ''}
       <small>${esc(b.items.map(l => l.n + (l.q > 1 ? ' ×' + l.q : '')).join(', '))}</small></div>
-      <div class="am">${B(b.total)}<br>${b.void ? '<span class="tag out">ยกเลิกแล้ว</span>' : `<button class="linkbtn" data-act="askVoid" data-id="${b.id}" data-day="${b.day}">ยกเลิกบิล</button>`}</div></div>`).join('')
+      <div class="am">${B(b.total)}<br>${b.void ? '<span class="tag out">ยกเลิกแล้ว</span>' : `<button class="linkbtn" data-act="editBill" data-id="${b.id}" data-day="${b.day}">แก้ไข</button><button class="linkbtn" data-act="askVoid" data-id="${b.id}" data-day="${b.day}">ยกเลิกบิล</button>`}</div></div>`).join('')
     : '<p class="empty">ยังไม่มีบิลในช่วงนี้ บิลที่ขายจะมาอยู่ตรงนี้</p>';
 
   return `${hasDemo ? '<p class="note">ตัวเลขตอนนี้มีข้อมูลตัวอย่างปนอยู่ เพื่อให้เห็นหน้าตากราฟ <button data-act="askClearDemo">ลบข้อมูลตัวอย่าง</button></p>' : ''}
@@ -752,8 +755,8 @@ function viewStock() {
 const monthOf = k => k.slice(0, 7);
 const expItems = mk => ((S.exp[mk] || {}).items) || [];
 const allExp = () => Object.values(S.exp).flatMap(e => e.items || []);
-const catOf = id => S.cfg.expCats.find(c => c.id === id);
-const catName = i => i.kind === 'stock' ? 'รับของเข้า' : ((catOf(i.cat) || {}).name || 'อื่นๆ');
+const catOf = id => (S.cfg.buyItems || []).find(c => c.id === id);
+const catName = i => i.kind === 'stock' ? 'รับเส้นเข้าสต็อก' : ((catOf(i.cat) || {}).name || 'อื่นๆ');
 const sumAmt = a => a.reduce((x, i) => x + (+i.amt || 0), 0);
 const signB = v => v < 0 ? '−' + B(-v) : B(v);
 const monthLabel = mk => { const [y, m] = mk.split('-').map(Number); return TH_MF[m - 1] + ' ' + (y + 543); };
@@ -777,32 +780,34 @@ function cashToday() {
   const out = sumAmt(expItems(monthOf(t)).filter(i => i.date === t && i.pay === 'cash'));
   return { sales, out };
 }
+const expLines = i => i.lines || [{ n: catName(i), qty: 1, price: i.amt, amt: i.amt }];
+const linesText = i => i.kind === 'stock' ? `${i.pn} ${i.qty} ซอง ซองละ ${B(i.unit)}` : expLines(i).map(l => l.n + (l.qty > 1 ? ' ×' + l.qty : '')).join(', ');
 function viewExp() {
   const t = today(), cur = monthOf(t), [y, m] = parts(t), prev = dkey(new Date(y, m - 2, 1)).slice(0, 7);
   const mk = S.expM === 'prev' ? prev : cur;
   const items = expItems(mk).slice().sort((a, b) => a.date !== b.date ? (a.date < b.date ? 1 : -1) : (a.t < b.t ? 1 : -1));
   const ops = items.filter(i => i.kind !== 'stock'), stock = items.filter(i => i.kind === 'stock');
   const opSum = sumAmt(ops), stSum = sumAmt(stock);
-  const byCat = {}; ops.forEach(i => byCat[i.cat] = (byCat[i.cat] || 0) + i.amt);
-  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), cmax = Math.max(1, ...cats.map(c => c[1]));
-  const due = mk === cur ? S.cfg.expCats.filter(c => c.fixed && !ops.some(i => i.cat === c.id)) : [];
+  const agg = {}; ops.forEach(i => expLines(i).forEach(l => { const a = agg[l.n] || (agg[l.n] = { n: l.n, amt: 0, qty: 0 }); a.amt += l.amt; a.qty += l.qty; }));
+  const top = Object.values(agg).sort((a, b) => b.amt - a.amt), tmax = Math.max(1, ...top.map(x => x.amt));
+  const due = mk === cur ? S.cfg.buyItems.filter(b => b.fixed && !ops.some(i => expLines(i).some(l => l.cid === b.id || l.n === b.name))) : [];
   const close = (S.days[t] || {}).close;
-  const dueHTML = due.length ? `<section class="card"><h2>รายจ่ายประจำที่ยังไม่บันทึกเดือนนี้</h2>${due.map(c => `<div class="due"><div class="tx"><b>${esc(c.name)}</b><small>${c.amt ? 'ปกติ ' + B(c.amt) : 'ยังไม่ได้ตั้งยอดปกติ'}</small></div><button class="btn sm" data-act="newExp" data-cat="${c.id}">บันทึก</button></div>`).join('')}</section>` : '';
+  const dueHTML = due.length ? `<section class="card"><h2>จ่ายประจำที่ยังไม่บันทึกเดือนนี้</h2>${due.map(b => `<div class="due"><div class="tx"><b>${esc(b.name)}</b><small>${b.price ? 'ครั้งก่อน ' + B(b.price) : 'ยังไม่เคยบันทึก'}</small></div><button class="btn sm" data-act="newBuy" data-item="${b.id}">บันทึก</button></div>`).join('')}</section>` : '';
   const closeHTML = mk === cur ? `<section class="card"><h2>ปิดยอดวันนี้</h2>${close
       ? `<div class="cmp"><span>ปิดยอดเมื่อ</span><span>${new Date(close.t).toTimeString().slice(0, 5)}</span><span>เงินที่ควรมีในลิ้นชัก</span><span>${signB(close.expected)}</span><span>นับได้จริง</span><span>${B(close.counted)}</span>
           <span class="tot">${close.diff === 0 ? 'ตรงพอดี' : close.diff > 0 ? 'เงินเกิน' : 'เงินขาด'}</span><span class="tot ${close.diff < 0 ? 'neg' : ''}">${close.diff ? B(Math.abs(close.diff)) : '฿0'}</span></div>
          <button class="btn line" data-act="closeDay">ปิดยอดใหม่</button>`
-      : `<p class="read">นับเงินสดในลิ้นชักตอนปิดร้าน เทียบกับที่ระบบคำนวณจากบิลเงินสดและรายจ่ายเงินสดของวันนี้</p><button class="btn line" data-act="closeDay">ปิดยอดวันนี้</button>`}</section>` : '';
-  const list = items.length ? items.map(i => `<div class="bill"><div class="tx"><b>${fmtDay(i.date)}</b> ${esc(catName(i))}
-      <small>${i.kind === 'stock' ? esc(i.pn) + ' ' + i.qty + ' ซอง ซองละ ' + B(i.unit) : esc(i.note || '')}${i.pay === 'transfer' ? ' โอน' : ' เงินสด'}</small></div>
-      <div class="am">${B(i.amt)}<br><button class="linkbtn" data-act="askDelExp" data-id="${i.id}" data-m="${mk}">ลบ</button></div></div>`).join('')
-    : '<p class="empty">ยังไม่มีรายจ่ายเดือนนี้ กด “บันทึกรายจ่าย” เพื่อเพิ่มรายการแรก</p>';
+      : `<p class="read">นับเงินสดในลิ้นชักตอนปิดร้าน เทียบกับที่ระบบคำนวณจากบิลเงินสดและเงินสดที่จ่ายออกวันนี้</p><button class="btn line" data-act="closeDay">ปิดยอดวันนี้</button>`}</section>` : '';
+  const list = items.length ? items.map(i => `<div class="bill"><div class="tx"><b>${fmtDay(i.date)}</b> ${i.kind === 'stock' ? 'รับเส้นเข้าสต็อก' : ''}${i.pay === 'transfer' ? ' โอน' : ' เงินสด'}
+      <small>${esc(linesText(i))}</small></div>
+      <div class="am">${B(i.amt)}<br><button class="linkbtn" data-act="editExp" data-id="${i.id}" data-m="${mk}">แก้ไข</button><button class="linkbtn" data-act="askDelExp" data-id="${i.id}" data-m="${mk}">ลบ</button></div></div>`).join('')
+    : '<p class="empty">ยังไม่มีรายการเดือนนี้ กด “ซื้อของ” เพื่อจดรายการแรก</p>';
   return `<div class="chips"><button class="chip" data-act="expM" data-id="cur" aria-pressed="${mk === cur}">เดือนนี้</button><button class="chip" data-act="expM" data-id="prev" aria-pressed="${mk === prev}">เดือนก่อน</button></div>
-  <div class="kpis"><div class="kpi main"><span>รายจ่ายร้าน ${monthLabel(mk)}</span><b>${B(opSum)}</b>${stSum ? `<i>รับของเข้า ${B(stSum)}</i>` : ''}</div></div>
-  <div class="row2" style="margin-bottom:14px"><button class="btn red" data-act="newExp">บันทึกรายจ่าย</button><button class="btn" data-act="newStockIn">รับของเข้า</button></div>
+  <div class="kpis"><div class="kpi main"><span>รายจ่ายร้าน ${monthLabel(mk)}</span><b>${B(opSum)}</b>${stSum ? `<i>ซื้อเส้นเข้าสต็อก ${B(stSum)}</i>` : ''}</div></div>
+  <div class="row2" style="margin-bottom:14px"><button class="btn red" data-act="newBuy">ซื้อของ</button><button class="btn" data-act="newStockIn">รับเส้นเข้าสต็อก</button></div>
   <div class="twocol"><div>${dueHTML}${closeHTML}
-    <section class="card"><h2>แยกตามหมวด</h2>${cats.length ? `<div class="rank">${cats.map(([id, v]) => `<div class="rk" style="grid-template-columns:1fr auto"><div><div class="nm">${esc((catOf(id) || {}).name || 'อื่นๆ')}</div><div class="bar"><i style="width:${Math.max(3, v / cmax * 100)}%"></i></div></div><div class="v">${B(v)}<small>${opSum ? Math.round(v / opSum * 100) : 0}%</small></div></div>`).join('')}</div>` : '<p class="empty">ยังไม่มีรายจ่ายในเดือนนี้</p>'}
-    <p class="read" style="margin:12px 0 0">เงินซื้อเส้นจากปุ่มรับของเข้าไม่นับรวมในรายจ่ายร้าน เพราะระบบหักต้นทุนเส้นตอนขายไปแล้ว</p></section>
+    <section class="card"><h2>ซื้ออะไรไปบ้าง</h2>${top.length ? `<div class="rank">${top.map(x => `<div class="rk" style="grid-template-columns:1fr auto"><div><div class="nm">${esc(x.n)}</div><div class="bar"><i style="width:${Math.max(3, x.amt / tmax * 100)}%"></i></div></div><div class="v">${B(x.amt)}<small>${x.qty} ชิ้น</small></div></div>`).join('')}</div>` : '<p class="empty">ยังไม่มีรายจ่ายในเดือนนี้</p>'}
+    <p class="read" style="margin:12px 0 0">เงินซื้อเส้นจากปุ่มรับเส้นเข้าสต็อกไม่นับรวมในรายจ่ายร้าน เพราะระบบหักต้นทุนเส้นตอนขายไปแล้ว</p></section>
   </div><div><section class="card"><h2>รายการ</h2>${list}</section></div></div>`;
 }
 
@@ -835,8 +840,8 @@ function viewSet() {
     <div class="setrow"><div class="tx"><small>${c.promos.length ? esc(c.promos.map(promoLabel).join(', ')) : 'ยังไม่มีโปรโมชัน'}</small></div><button class="btn sm" data-act="editPromos">แก้ไข</button></div></section>
   <section class="card"><h2>สมาชิกและแต้ม</h2>
     <div class="setrow"><div class="tx"><small>ทุก ${B(c.loyalty.per)} ได้ 1 แต้ม ครบ ${c.loyalty.need} แต้มแลกฟรี 1 ชาม เดือนเกิดได้แต้ม x${c.loyalty.bday}</small></div><button class="btn sm" data-act="editLoy">แก้ไข</button></div></section>
-  <section class="card"><h2>หมวดรายจ่าย</h2>
-    <div class="setrow"><div class="tx"><small>${esc(c.expCats.map(x => x.name + (x.fixed ? ' (ประจำ)' : '')).join(', ')) || 'ยังไม่มีหมวด'}</small></div><button class="btn sm" data-act="editExpCats">แก้ไข</button></div></section>
+  <section class="card"><h2>ของที่ซื้อบ่อย</h2>
+    <div class="setrow"><div class="tx"><small>${esc(c.buyItems.map(x => x.name + (x.fixed ? ' (ประจำ)' : '')).join(', ')) || 'ยังไม่มีรายการ'}</small></div><button class="btn sm" data-act="editBuyItems">แก้ไข</button></div></section>
   <section class="card"><h2>ข้อมูล</h2>
     ${dl ? '<div class="setrow"><div class="tx"><b>สำรองข้อมูลเป็น Excel</b><small>ไฟล์เดียวมีสินค้า ท็อปปิ้ง บิลทั้งหมด และสมาชิก</small></div><button class="btn sm" data-act="csv">สำรองข้อมูล</button></div>' : ''}
     ${hasDemo ? '<div class="setrow"><div class="tx"><b>ข้อมูลตัวอย่าง</b><small>ยอดขายสมมติที่ใส่ไว้ให้ดูกราฟ ลบก่อนเริ่มขายจริง</small></div><button class="btn sm" data-act="askClearDemo">ลบข้อมูลตัวอย่าง</button></div>' : ''}
@@ -937,30 +942,46 @@ function renderSheet() {
     html = shell('กรอกสินค้าหลายรายการ', `<p class="read" style="margin-top:0">แก้ได้ทุกช่อง แถวที่ลบจะถูกลบจากร้านเมื่อกดบันทึก</p>
       <div class="erow e5 ehead"><span>ชื่อสินค้า</span><span>ราคาขาย</span><span>ต้นทุน</span><span>สต็อก</span><span></span></div><div id="rows">${s.rows.map(bulkRow).join('')}</div>
       <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มแถว</button><button class="btn red" data-act="saveBulk">บันทึกสินค้าทั้งหมด</button>`);
-  } else if (s.type === 'exp') {
-    html = shell('บันทึกรายจ่าย', `<label class="f">จำนวนเงิน (บาท)<input id="eAmt" class="cashin" type="number" inputmode="decimal" min="0" placeholder="0" value="${s.amt || ''}"></label>
-      <h3 class="h3s" style="margin-top:0">หมวด</h3><div class="chips" style="flex-wrap:wrap">${S.cfg.expCats.map(c => `<button class="chip y" data-act="pickIn" data-k="cat" data-id="${c.id}" aria-pressed="${s.cat === c.id}">${esc(c.name)}</button>`).join('')}</div>
-      <h3 class="h3s" style="margin-top:4px">จ่ายด้วย</h3><div class="chips"><button class="chip" data-act="pickIn" data-k="pay" data-id="cash" aria-pressed="${s.pay === 'cash'}">เงินสด</button><button class="chip" data-act="pickIn" data-k="pay" data-id="transfer" aria-pressed="${s.pay === 'transfer'}">โอน</button></div>
-      <div class="row2"><label class="f">วันที่<input id="eDate" type="date" value="${s.date}"></label><label class="f">หมายเหตุ<input id="eNote" placeholder="เช่น บิลเดือน ต.ค."></label></div>
-      <button class="btn red" data-act="saveExp">บันทึกรายจ่าย</button>`);
+  } else if (s.type === 'buy') {
+    const cat = S.cfg.buyItems.slice().sort((a, b) => (b.uses || 0) - (a.uses || 0));
+    html = shell(s.edit ? 'แก้ไขรายการซื้อ' : 'ซื้อของ', `${cat.length ? `<h3 class="h3s" style="margin-top:0">ของที่เคยซื้อ แตะเพื่อเพิ่ม</h3><div class="chips" style="flex-wrap:wrap">${cat.map(b => `<button class="chip" data-act="buyChip" data-id="${b.id}">${esc(b.name)}${b.price ? ' ' + B(b.price) : ''}</button>`).join('')}</div>` : ''}
+      <div class="erow ehead"><span>รายการ</span><span>จำนวน</span><span>ราคาต่อชิ้น</span><span></span></div>
+      <div id="rows">${s.rows.map(buyRow).join('')}</div>
+      <datalist id="buyList">${cat.map(b => `<option value="${esc(b.name)}">`).join('')}</datalist>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:12px">พิมพ์รายการใหม่</button>
+      <div class="change"><span>รวมทั้งหมด</span><b id="bTotal">${B(buyTotal(s.rows))}</b></div>
+      <div class="row2"><div><h3 class="h3s" style="margin-top:0">จ่ายด้วย</h3><div class="chips"><button class="chip" data-act="pickIn" data-k="pay" data-id="cash" aria-pressed="${s.pay === 'cash'}">เงินสด</button><button class="chip" data-act="pickIn" data-k="pay" data-id="transfer" aria-pressed="${s.pay === 'transfer'}">โอน</button></div></div>
+        <label class="f">วันที่<input id="bDate" type="date" value="${s.date}"></label></div>
+      <button class="btn red" data-act="saveBuy">${s.edit ? 'บันทึกการแก้ไข' : 'บันทึกการซื้อ'}</button>`);
   } else if (s.type === 'stockIn') {
     const ps = S.cfg.products;
-    html = shell('รับของเข้า', ps.length ? `<label class="f">สินค้า<select id="sProd">${ps.map(p => `<option value="${p.id}">${esc(p.name)} (เหลือ ${p.stock || 0})</option>`).join('')}</select></label>
-      <div class="row2"><label class="f">จำนวน (ซอง)<input id="sQty" type="number" inputmode="numeric" min="1" placeholder="0"></label><label class="f">จ่ายไปทั้งหมด (บาท)<input id="sAmt" type="number" inputmode="decimal" min="0" placeholder="0"></label></div>
+    const pre = s.pre || {};
+    html = shell(s.edit ? 'แก้ไขการรับเส้นเข้าสต็อก' : 'รับเส้นเข้าสต็อก', ps.length ? `<label class="f">สินค้า<select id="sProd">${ps.map(p => `<option value="${p.id}" ${pre.prod === p.id ? 'selected' : ''}>${esc(p.name)} (เหลือ ${p.stock || 0})</option>`).join('')}</select></label>
+      <div class="row2"><label class="f">จำนวน (ซอง)<input id="sQty" type="number" inputmode="numeric" min="1" placeholder="0" value="${pre.qty || ''}"></label><label class="f">จ่ายไปทั้งหมด (บาท)<input id="sAmt" type="number" inputmode="decimal" min="0" placeholder="0" value="${pre.amt || ''}"></label></div>
       <p class="read" id="sUnit">ใส่จำนวนและยอดเงินเพื่อดูราคาต่อซอง</p>
-      <label class="chk"><input id="sCost" type="checkbox" checked> ใช้ราคานี้เป็นต้นทุนต่อซองใหม่</label>
+      <label class="chk"><input id="sCost" type="checkbox" ${s.edit ? '' : 'checked'}> ใช้ราคานี้เป็นต้นทุนต่อซองใหม่</label>
       <h3 class="h3s" style="margin-top:0">จ่ายด้วย</h3><div class="chips"><button class="chip" data-act="pickIn" data-k="pay" data-id="cash" aria-pressed="${s.pay === 'cash'}">เงินสด</button><button class="chip" data-act="pickIn" data-k="pay" data-id="transfer" aria-pressed="${s.pay === 'transfer'}">โอน</button></div>
-      <button class="btn red" data-act="saveStockIn">บันทึกรับของเข้า</button>` : '<p class="empty">ยังไม่มีสินค้า เพิ่มสินค้าในแท็บสต็อกก่อน</p>');
+      <button class="btn red" data-act="saveStockIn">${s.edit ? 'บันทึกการแก้ไข' : 'บันทึกรับเส้นเข้าสต็อก'}</button>` : '<p class="empty">ยังไม่มีสินค้า เพิ่มสินค้าในแท็บสต็อกก่อน</p>');
   } else if (s.type === 'close') {
     const c = cashToday();
     html = shell('ปิดยอดวันนี้', `<div class="cmp"><span>ขายเงินสดวันนี้</span><span>${B(c.sales)}</span><span>จ่ายเงินสดวันนี้</span><span>−${B(c.out)}</span></div>
       <div class="row2"><label class="f">เงินทอนตั้งต้นเมื่อเช้า<input id="cOpen" type="number" inputmode="decimal" min="0" value="${S.cfg.float || 0}"></label><label class="f">นับเงินได้จริง<input id="cCount" type="number" inputmode="decimal" min="0" placeholder="0"></label></div>
       <div class="change"><span id="cLabel">เงินที่ควรมีในลิ้นชัก</span><b id="cVal">${signB((S.cfg.float || 0) + c.sales - c.out)}</b></div>
       <button class="btn red" data-act="saveClose">บันทึกปิดยอด</button>`);
-  } else if (s.type === 'expCats') {
-    html = shell('หมวดรายจ่าย', `<p class="read" style="margin-top:0">หมวดแบบประจำจะขึ้นเตือนทุกเดือนจนกว่าจะบันทึก</p>
-      <div class="erow ehead"><span>ชื่อหมวด</span><span>ประเภท</span><span>ยอดปกติ</span><span></span></div><div id="rows">${s.rows.map(expCatRow).join('')}</div>
-      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มหมวด</button><button class="btn red" data-act="saveExpCats">บันทึกหมวดรายจ่าย</button>`);
+  } else if (s.type === 'billEdit') {
+    const sub = s.lines.reduce((a, l) => a + unitOf(l) * l.q, 0), free = Math.min(s.free || 0, sub);
+    html = shell('แก้ไขบิล ' + fmtDay(s.day) + ' ' + new Date(s.t).toTimeString().slice(0, 5), `<div class="cart">${s.lines.map((l, i) => `<div class="ln"><div class="tx"><b>${esc(l.n)}</b><small>${l.tops.length ? esc(l.tops.map(t => '+' + t.n).join(' ')) + ' ' : ''}${B(unitOf(l))} ต่อชาม</small></div>
+        <span class="step"><button data-act="beq" data-id="${i}" data-d="-1" aria-label="ลด">−</button><span>${l.q}</span><button data-act="beq" data-id="${i}" data-d="1" aria-label="เพิ่ม">+</button></span><span class="am">${B(unitOf(l) * l.q)}</span></div>`).join('')}
+      <div class="tot"><span>รวม</span><span>${B(sub)}</span></div>${free ? `<div class="tot"><span>แลกแต้ม ฟรี 1 ชาม</span><span>−${B(free)}</span></div>` : ''}</div>
+      <label class="f" style="margin-top:10px">ส่วนลด (บาท)<input id="beDisc" type="number" inputmode="decimal" min="0" value="${s.disc || 0}"></label>
+      <h3 class="h3s" style="margin-top:0">รับเงินด้วย</h3><div class="chips"><button class="chip" data-act="pickIn" data-k="pay" data-id="cash" aria-pressed="${s.pay === 'cash'}">เงินสด</button><button class="chip" data-act="pickIn" data-k="pay" data-id="qr" aria-pressed="${s.pay === 'qr'}">พร้อมเพย์</button></div>
+      <div class="change"><span>ยอดใหม่</span><b id="beTot">${B(Math.max(0, sub - free - (s.disc || 0)))}</b></div>
+      <p class="read">ลดจำนวนเป็น 0 เพื่อเอารายการออก สต็อกและแต้มสมาชิกจะปรับตามให้</p>
+      <button class="btn red" data-act="saveBill">บันทึกการแก้ไข</button>`);
+  } else if (s.type === 'buyItems') {
+    html = shell('ของที่ซื้อบ่อย', `<p class="read" style="margin-top:0">ตั้งเป็น "ประจำ" ถ้าต้องจ่ายทุกเดือน ระบบจะเตือนจนกว่าจะบันทึก</p>
+      <div class="erow ehead"><span>ชื่อ</span><span>ประเภท</span><span>ราคาล่าสุด</span><span></span></div><div id="rows">${s.rows.map(buyItemRow).join('')}</div>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มรายการ</button><button class="btn red" data-act="saveBuyItems">บันทึกของที่ซื้อบ่อย</button>`);
   } else if (s.type === 'confirm') {
     html = shell(s.title, `<p>${esc(s.text)}</p><div class="row2"><button class="btn" data-act="close">ไม่ทำ</button><button class="btn red" data-act="${s.act}">${esc(s.yes)}</button></div>`);
   }
@@ -990,7 +1011,19 @@ function shrinkImage(file) {
 }
 const topRow = t => `<div class="erow"><input class="in" data-k="name" value="${esc(t.name || '')}" placeholder="เช่น ไข่ต้ม" data-rid="${esc(t.id || '')}"><input class="in" data-k="price" type="number" inputmode="decimal" value="${t.price ?? ''}"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${t.cost ?? ''}"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
 const bulkRow = p => `<div class="erow e5"><input class="in" data-k="name" value="${esc(p.name || '')}" placeholder="ชื่อสินค้า" data-rid="${esc(p.id || '')}" aria-label="ชื่อสินค้า"><input class="in" data-k="price" type="number" inputmode="decimal" value="${p.price ?? ''}" aria-label="ราคาขาย"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${p.cost ?? ''}" aria-label="ต้นทุน"><input class="in" data-k="stock" type="number" inputmode="numeric" value="${p.stock ?? ''}" aria-label="สต็อก"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
-const expCatRow = c => `<div class="erow"><input class="in" data-k="name" value="${esc(c.name || '')}" placeholder="เช่น ค่าแรง" data-rid="${esc(c.id || '')}" aria-label="ชื่อหมวด"><select class="in" data-k="fixed" aria-label="ประเภท"><option value="0" ${!c.fixed ? 'selected' : ''}>ตามจริง</option><option value="1" ${c.fixed ? 'selected' : ''}>ประจำ</option></select><input class="in" data-k="amt" type="number" inputmode="decimal" value="${c.amt || ''}" placeholder="0" aria-label="ยอดปกติ"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
+const buyRow = r => `<div class="erow"><input class="in" data-k="name" list="buyList" value="${esc(r.name || '')}" placeholder="พิมพ์ชื่อของ" data-rid="${esc(r.id || '')}" aria-label="ชื่อของ"><input class="in" data-k="qty" type="number" inputmode="decimal" min="1" value="${r.qty ?? 1}" aria-label="จำนวน"><input class="in" data-k="price" type="number" inputmode="decimal" min="0" value="${r.price || ''}" placeholder="บาท" aria-label="ราคาต่อชิ้น"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
+const buyItemRow = c => `<div class="erow"><input class="in" data-k="name" value="${esc(c.name || '')}" placeholder="เช่น ไข่ไก่" data-rid="${esc(c.id || '')}" aria-label="ชื่อ"><select class="in" data-k="fixed" aria-label="ประเภท"><option value="0" ${!c.fixed ? 'selected' : ''}>ทั่วไป</option><option value="1" ${c.fixed ? 'selected' : ''}>ประจำ</option></select><input class="in" data-k="price" type="number" inputmode="decimal" value="${c.price || ''}" placeholder="0" aria-label="ราคาล่าสุด"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
+const buyTotal = rows => Math.round(rows.reduce((a, r) => a + (N(r.qty) || 1) * N(r.price), 0) * 100) / 100;
+function buyInput(t) {
+  const row = t.closest('.erow');
+  if (t.dataset.k === 'name') {
+    const it = S.cfg.buyItems.find(b => b.name === t.value.trim());
+    t.dataset.rid = it ? it.id : '';
+    const p = row.querySelector('[data-k=price]');
+    if (it && it.price && !p.value) p.value = it.price;
+  }
+  $('#bTotal').textContent = B(buyTotal(readRows()));
+}
 const promoRow = p => `<div class="erow"><input class="in" data-k="name" value="${esc(p.name || '')}" placeholder="เช่น ลดนักเรียน" data-rid="${esc(p.id || '')}"><input class="in" data-k="val" type="number" inputmode="decimal" value="${p.val ?? ''}"><select class="in" data-k="type"><option value="pct" ${p.type !== 'baht' ? 'selected' : ''}>%</option><option value="baht" ${p.type === 'baht' ? 'selected' : ''}>บาท</option></select><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
 function readRows() {
   return [...document.querySelectorAll('#rows .erow')].map(r => {
@@ -1109,9 +1142,11 @@ async function exportBackup() {
     b.sub, b.disc || 0, b.free || 0, b.total, b.cost || 0, b.total - (b.cost || 0), b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์', b.mn || '', b.earn || 0, b.red || 0, b.void ? 'ยกเลิก' : b.demo ? 'ตัวอย่าง' : 'ขายแล้ว'])));
   let expAll = S.exp;
   if (db) { try { const snap = await db.collection('expenses').get(); const all = {}; snap.docs.forEach(d => all[d.id] = d.data()); Object.keys(S.exp).forEach(k => all[k] = S.exp[k]); expAll = all; } catch (e) {} }
-  const exps = [['วันที่', 'หมวด', 'รายละเอียด', 'จำนวนเงิน', 'จ่ายด้วย', 'นับเป็นรายจ่ายร้าน']];
-  Object.keys(expAll).sort().forEach(k => (expAll[k].items || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).forEach(i => exps.push([i.date, catName(i),
-    i.kind === 'stock' ? `${i.pn} ${i.qty} ซอง ซองละ ${i.unit}` : (i.note || ''), i.amt, i.pay === 'transfer' ? 'โอน' : 'เงินสด', i.kind === 'stock' ? 'ไม่ (ต้นทุนเส้น)' : 'ใช่'])));
+  const exps = [['วันที่', 'รายการ', 'จำนวน', 'ราคาต่อชิ้น', 'จำนวนเงิน', 'จ่ายด้วย', 'นับเป็นรายจ่ายร้าน']];
+  Object.keys(expAll).sort().forEach(k => (expAll[k].items || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).forEach(i => {
+    if (i.kind === 'stock') exps.push([i.date, 'รับเส้นเข้าสต็อก: ' + i.pn, i.qty, i.unit, i.amt, i.pay === 'transfer' ? 'โอน' : 'เงินสด', 'ไม่ (ต้นทุนเส้น)']);
+    else expLines(i).forEach(l => exps.push([i.date, l.n, l.qty, l.price, l.amt, i.pay === 'transfer' ? 'โอน' : 'เงินสด', 'ใช่']));
+  }));
   const mems = [['ชื่อ', 'เบอร์โทร', 'เดือนเกิด', 'แต้มสะสม', 'ยอดซื้อรวม', 'จำนวนครั้ง', 'มาล่าสุด']]
     .concat(S.mem.map(m => [m.name, String(m.phone), m.bm ? TH_MF[m.bm - 1] : '', m.pts || 0, m.spent || 0, m.visits || 0, m.last || '']));
   try {
@@ -1122,30 +1157,52 @@ async function exportBackup() {
 }
 function backToCart() { closeSheet(); render(); if (S.cart.length && window.matchMedia('(max-width:959px)').matches) openSheet({ type: 'cart' }); }
 
-const RO_BLOCK = new Set(['newExp', 'saveExp', 'newStockIn', 'saveStockIn', 'askDelExp', 'doDelExp', 'closeDay', 'saveClose', 'editExpCats', 'saveExpCats', 'pick', 'editProd', 'bulk', 'stk', 'newMem', 'editMem', 'editTops', 'editPromos', 'editShop', 'editLoy', 'askVoid', 'askClearDemo', 'commit', 'saveProd', 'delProd', 'saveBulk', 'saveMem', 'doDelMem', 'saveTops', 'savePromos', 'saveShop', 'saveLoy', 'doVoid', 'doClearDemo', 'setPP']);
+const RO_BLOCK = new Set(['editExp', 'editBill', 'beq', 'saveBill', 'newBuy', 'buyChip', 'saveBuy', 'newStockIn', 'saveStockIn', 'askDelExp', 'doDelExp', 'closeDay', 'saveClose', 'editBuyItems', 'saveBuyItems', 'pick', 'editProd', 'bulk', 'stk', 'newMem', 'editMem', 'editTops', 'editPromos', 'editShop', 'editLoy', 'askVoid', 'askClearDemo', 'commit', 'saveProd', 'delProd', 'saveBulk', 'saveMem', 'doDelMem', 'saveTops', 'savePromos', 'saveShop', 'saveLoy', 'doVoid', 'doClearDemo', 'setPP']);
 const ACT = {
   expM: el => { S.expM = el.dataset.id; render(); },
   pickIn: el => { S.sheet[el.dataset.k] = el.dataset.id; el.parentNode.querySelectorAll('[aria-pressed]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); },
-  newExp: el => { const c = el.dataset.cat ? catOf(el.dataset.cat) : null; openSheet({ type: 'exp', cat: c ? c.id : '', amt: c && c.amt ? c.amt : '', pay: 'cash', date: today() }); },
-  saveExp: () => {
-    const s = S.sheet, amt = N($('#eAmt').value), date = $('#eDate').value || today();
-    if (amt <= 0) return toast('ใส่จำนวนเงินก่อน');
-    if (!s.cat) return toast('เลือกหมวดรายจ่ายก่อน');
-    const mk = monthOf(date), e = S.exp[mk] || (S.exp[mk] = { month: mk, items: [] });
-    e.items.push({ id: uid('x'), date, cat: s.cat, amt, note: $('#eNote').value.trim(), pay: s.pay, t: new Date().toISOString() });
-    saveExp(mk); closeSheet(); render(); toast(`บันทึก${catOf(s.cat).name} ${B(amt)} แล้ว`);
+  newBuy: el => { const it = el.dataset.item ? catOf(el.dataset.item) : null; openSheet({ type: 'buy', rows: [it ? { id: it.id, name: it.name, qty: 1, price: it.price || '' } : {}], pay: 'cash', date: today() }); },
+  buyChip: el => {
+    const it = catOf(el.dataset.id); if (!it) return;
+    const rows = readRows().filter(r => r.name.trim() || N(r.price));
+    const same = rows.find(r => r.id === it.id || r.name.trim() === it.name);
+    if (same) same.qty = (N(same.qty) || 1) + 1; else rows.push({ id: it.id, name: it.name, qty: 1, price: it.price || '' });
+    S.sheet.rows = rows; S.sheet.date = $('#bDate').value || S.sheet.date; renderSheet();
+  },
+  saveBuy: () => {
+    const s = S.sheet, rows = readRows().filter(r => r.name.trim());
+    if (!rows.length) return toast('เพิ่มรายการก่อน');
+    const bad = rows.find(r => N(r.price) <= 0); if (bad) return toast(`ใส่ราคาของ ${bad.name.trim()} ก่อน`);
+    const lines = rows.map(r => {
+      const n = r.name.trim(), qty = Math.max(0.01, N(r.qty) || 1), price = N(r.price);
+      let it = S.cfg.buyItems.find(b => b.id === r.id && b.name === n) || S.cfg.buyItems.find(b => b.name === n);
+      if (it) { it.price = price; if (!s.edit) it.uses = (it.uses || 0) + 1; }
+      else { it = { id: uid('b'), name: n, price, fixed: false, uses: 1 }; S.cfg.buyItems.push(it); }
+      return { cid: it.id, n, qty, price, amt: Math.round(qty * price * 100) / 100 };
+    });
+    const date = $('#bDate').value || today(), mk = monthOf(date), amt = Math.round(lines.reduce((a, l) => a + l.amt, 0) * 100) / 100;
+    let t0 = new Date().toISOString();
+    if (s.edit) { const oe = S.exp[s.edit.m], old = oe && oe.items.find(x => x.id === s.edit.id); if (old) t0 = old.t; if (oe) { oe.items = oe.items.filter(x => x.id !== s.edit.id); if (s.edit.m !== mk) saveExp(s.edit.m); } }
+    const e = S.exp[mk] || (S.exp[mk] = { month: mk, items: [] });
+    e.items.push({ id: s.edit ? s.edit.id : uid('x'), kind: 'buy', date, lines, amt, pay: s.pay, t: t0, ...(s.edit ? { edited: new Date().toISOString() } : {}) });
+    saveCfg(); saveExp(mk); closeSheet(); render(); toast(s.edit ? `แก้ไขแล้ว รวม ${B(amt)}` : `บันทึกซื้อของ ${lines.length} รายการ รวม ${B(amt)} แล้ว`);
   },
   newStockIn: () => openSheet({ type: 'stockIn', pay: 'cash' }),
   saveStockIn: () => {
     const s = S.sheet, p = prod($('#sProd').value), qty = Math.round(N($('#sQty').value)), amt = N($('#sAmt').value);
     if (!p) return; if (qty <= 0) return toast('ใส่จำนวนซองก่อน'); if (amt <= 0) return toast('ใส่ยอดเงินที่จ่ายก่อน');
-    const unit = Math.round(amt / qty * 100) / 100, date = today(), mk = monthOf(date);
+    let date = today(), t0 = new Date().toISOString();
+    if (s.edit) {
+      const oe = S.exp[s.edit.m], old = oe && oe.items.find(x => x.id === s.edit.id);
+      if (old) { const op = prod(old.prod); if (op) op.stock = Math.max(0, (op.stock || 0) - old.qty); date = old.date; t0 = old.t; oe.items = oe.items.filter(x => x.id !== s.edit.id); }
+    }
+    const unit = Math.round(amt / qty * 100) / 100, mk = monthOf(date);
     p.stock = (p.stock || 0) + qty; if ($('#sCost').checked) p.cost = unit;
     const e = S.exp[mk] || (S.exp[mk] = { month: mk, items: [] });
-    e.items.push({ id: uid('x'), kind: 'stock', date, cat: 'stock', prod: p.id, pn: p.name, qty, amt, unit, pay: s.pay, t: new Date().toISOString() });
-    saveCfg(); saveExp(mk); closeSheet(); render(); toast(`รับ${p.name} ${qty} ซองแล้ว สต็อกเป็น ${p.stock}`);
+    e.items.push({ id: s.edit ? s.edit.id : uid('x'), kind: 'stock', date, cat: 'stock', prod: p.id, pn: p.name, qty, amt, unit, pay: s.pay, t: t0, ...(s.edit ? { edited: new Date().toISOString() } : {}) });
+    saveCfg(); saveExp(mk); closeSheet(); render(); toast(`รับ${p.name} ${qty} ซองเข้าสต็อกแล้ว เหลือ ${p.stock} ซอง`);
   },
-  askDelExp: el => openSheet({ type: 'confirm', title: 'ลบรายการนี้', text: 'รายการจะหายจากรายจ่ายและสรุปยอด ถ้าเป็นการรับของเข้า สต็อกจะถูกหักคืน', yes: 'ลบรายการ', act: 'doDelExp', id: el.dataset.id, m: el.dataset.m }),
+  askDelExp: el => openSheet({ type: 'confirm', title: 'ลบรายการนี้', text: 'รายการจะหายจากรายจ่ายและสรุปยอด ถ้าเป็นการรับเส้นเข้าสต็อก สต็อกจะถูกหักคืน', yes: 'ลบรายการ', act: 'doDelExp', id: el.dataset.id, m: el.dataset.m }),
   doDelExp: () => {
     const { id, m } = S.sheet, e = S.exp[m], i = e && e.items.find(x => x.id === id);
     if (!i) return closeSheet();
@@ -1162,10 +1219,38 @@ const ACT = {
     S.cfg.float = opening; saveCfg(); saveDay(t); closeSheet(); render();
     toast(d.close.diff === 0 ? 'ปิดยอดแล้ว เงินตรงพอดี' : `ปิดยอดแล้ว เงิน${d.close.diff > 0 ? 'เกิน' : 'ขาด'} ${B(Math.abs(d.close.diff))}`);
   },
-  editExpCats: () => openSheet({ type: 'expCats', rows: clone(S.cfg.expCats) }),
-  saveExpCats: () => {
-    S.cfg.expCats = readRows().filter(r => r.name.trim()).map(r => ({ id: r.id || uid('c'), name: r.name.trim(), fixed: r.fixed === '1', amt: N(r.amt) }));
-    saveCfg(); closeSheet(); render(); toast('บันทึกหมวดรายจ่ายแล้ว');
+  editExp: el => {
+    const m = el.dataset.m, i = expItems(m).find(x => x.id === el.dataset.id); if (!i) return;
+    if (i.kind === 'stock') openSheet({ type: 'stockIn', pay: i.pay || 'cash', edit: { id: i.id, m }, pre: i });
+    else openSheet({ type: 'buy', rows: expLines(i).map(l => ({ id: l.cid || '', name: l.n, qty: l.qty, price: l.price })), pay: i.pay || 'cash', date: i.date, edit: { id: i.id, m } });
+  },
+  editBill: el => {
+    const d = S.days[el.dataset.day], b = d && d.bills.find(x => x.id === el.dataset.id); if (!b || b.void) return;
+    openSheet({ type: 'billEdit', day: el.dataset.day, id: b.id, t: b.t, lines: clone(b.items).map(l => ({ ...l, tops: l.tops || [] })), disc: b.disc || 0, free: b.free || 0, pay: b.pay });
+  },
+  beq: el => { const s = S.sheet, d = $('#beDisc'); if (d) s.disc = N(d.value); const l = s.lines[N(el.dataset.id)]; l.q = Math.max(0, l.q + N(el.dataset.d)); renderSheet(); },
+  saveBill: () => {
+    const s = S.sheet, day = S.days[s.day], b = day && day.bills.find(x => x.id === s.id); if (!b) return closeSheet();
+    const items = s.lines.filter(l => l.q > 0);
+    if (!items.length) return toast('ไม่มีรายการเหลือ ถ้าจะยกเลิกทั้งบิลให้กด “ยกเลิกบิล”');
+    const sub = items.reduce((a, l) => a + unitOf(l) * l.q, 0), free = Math.min(b.free || 0, sub), disc = Math.min(Math.max(0, N($('#beDisc').value)), sub - free);
+    const total = sub - free - disc, cost = items.reduce((a, l) => a + unitCost(l) * l.q, 0), oldTotal = b.total;
+    const was = {}; b.items.forEach(l => was[l.p] = (was[l.p] || 0) + l.q);
+    const now = {}; items.forEach(l => now[l.p] = (now[l.p] || 0) + l.q);
+    new Set([...Object.keys(was), ...Object.keys(now)]).forEach(id => { const p = prod(id); if (p) p.stock = Math.max(0, (p.stock || 0) + (was[id] || 0) - (now[id] || 0)); });
+    const mb = b.m && member(b.m);
+    if (mb) {
+      const base = Math.floor(oldTotal / S.cfg.loyalty.per), mult = base && b.earn ? b.earn / base : 1, earn = Math.floor(total / S.cfg.loyalty.per) * mult;
+      mb.pts = Math.max(0, (mb.pts || 0) + earn - (b.earn || 0)); mb.spent = Math.max(0, (mb.spent || 0) + total - oldTotal); b.earn = earn; saveMem();
+    }
+    Object.assign(b, { items, sub, free, disc, dl: disc ? (b.dl || 'ส่วนลด') : '', total, cost, pay: s.pay, recv: s.pay === 'cash' ? Math.max(b.recv || 0, total) : total, edited: new Date().toISOString() });
+    saveDay(s.day); saveCfg(); closeSheet(); render(); toast(`แก้ไขบิลแล้ว ยอดใหม่ ${B(total)}`);
+  },
+  editBuyItems: () => openSheet({ type: 'buyItems', rows: clone(S.cfg.buyItems) }),
+  saveBuyItems: () => {
+    const old = S.cfg.buyItems;
+    S.cfg.buyItems = readRows().filter(r => r.name.trim()).map(r => { const o = old.find(x => x.id === r.id) || {}; return { id: r.id || uid('b'), name: r.name.trim(), fixed: r.fixed === '1', price: N(r.price), uses: o.uses || 0 }; });
+    saveCfg(); closeSheet(); render(); toast('บันทึกของที่ซื้อบ่อยแล้ว');
   },
   pickMem: () => openSheet({ type: 'mem', q: '' }),
   chooseMem: el => { keepRecv(); S.cm = el.dataset.id; S.redeem = false; if (S.sheet && S.sheet.type === 'mem') backToCart(); else { render(); renderSheet(); } },
@@ -1286,6 +1371,8 @@ document.addEventListener('input', e => {
   if (t.id === 'recv') updateChange();
   else if (t.id === 'sQty' || t.id === 'sAmt' || t.id === 'sProd') updateStockIn();
   else if (t.id === 'cOpen' || t.id === 'cCount') updateClose();
+  else if (S.sheet && S.sheet.type === 'buy' && t.closest('#rows')) buyInput(t);
+  else if (t.id === 'beDisc') { const s = S.sheet, sub = s.lines.reduce((a, l) => a + unitOf(l) * l.q, 0); s.disc = N(t.value); $('#beTot').textContent = B(Math.max(0, sub - Math.min(s.free || 0, sub) - s.disc)); }
   else if (t.classList.contains('mqi')) t.parentNode.querySelector('.mres').innerHTML = memFind(t.value);
   else if (t.id === 'mq' && S.sheet) { S.sheet.q = t.value; $('#mlist').innerHTML = memListHTML(t.value, 'chooseMem'); }
   else if (t.id === 'mq2') { S.mq = t.value; $('#mlist2').innerHTML = memListHTML(S.mq, 'viewMem'); }
