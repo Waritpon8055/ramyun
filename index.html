@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ร้านรามยอน คิดเงินและสรุปยอด</title>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600&family=Mitr:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<style>
+:root{
+  --bg:#F2F4F9; --surface:#FFFFFF; --sunk:#E8ECF4; --ink:#18213D; --muted:#5A6484; --line:#D9DFEB;
+  --red:#DB1230; --on-red:#FFFFFF; --yellow:#FFD426; --on-yellow:#18213D;
+  --ok:#0E7A56; --warn:#A85800; --warn-bg:#FFF3D6; --bad-bg:#FFE3E6;
+  --shadow:0 1px 0 rgba(24,33,61,.06), 0 8px 24px -12px rgba(24,33,61,.25);
+  --display:"Mitr","Anuphan","Noto Sans Thai","Sukhumvit Set","Thonburi",system-ui,sans-serif;
+  --body:"Anuphan","Noto Sans Thai","Sukhumvit Set","Thonburi",system-ui,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1426; --surface:#182039; --sunk:#222C4A; --ink:#EEF1FA; --muted:#9CA6C4; --line:#2C3759;
+    --red:#FF4A5E; --on-red:#1A0206; --ok:#4FD1A1; --warn:#FFC766; --warn-bg:#3A2E12; --bad-bg:#42161D;
+    --shadow:0 1px 0 rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1426; --surface:#182039; --sunk:#222C4A; --ink:#EEF1FA; --muted:#9CA6C4; --line:#2C3759;
+  --red:#FF4A5E; --on-red:#1A0206; --ok:#4FD1A1; --warn:#FFC766; --warn-bg:#3A2E12; --bad-bg:#42161D;
+  --shadow:0 1px 0 rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0;text-align:inherit}
+button:disabled{cursor:not-allowed}
+:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+img{max-width:100%;display:block}
+h1,h2,h3{font-family:var(--display);font-weight:500;margin:0;line-height:1.25}
+.num{font-family:var(--display);font-variant-numeric:tabular-nums}
+
+/* ---------- shell ---------- */
+.top{display:flex;align-items:center;gap:12px;padding:14px 16px 10px;max-width:1240px;margin:0 auto}
+.top h1{font-size:20px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .day{font-size:13px;color:var(--muted);text-align:right;line-height:1.3}
+.top .day b{display:block;font-family:var(--display);font-weight:500;font-size:17px;color:var(--ink)}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(5,1fr);background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabs button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 9px;font-size:12px;color:var(--muted);position:relative}
+.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs button[aria-current="page"]{color:var(--red);font-weight:600}
+.tabs .dot{position:absolute;top:6px;left:calc(50% + 8px);width:9px;height:9px;border-radius:50%;background:var(--yellow);border:2px solid var(--surface)}
+main{max-width:1240px;margin:0 auto;padding:4px 16px 150px}
+.note{background:var(--warn-bg);color:var(--ink);border-radius:12px;padding:10px 14px;font-size:14px;margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+body.login .tabs,body.login .day{display:none}
+.auth{max-width:380px;margin:8vh auto 0}
+.auth h2{font-size:22px;margin-bottom:4px}
+.auth p{color:var(--muted);font-size:14px;margin:0 0 16px}
+.auth .err{color:var(--red);font-size:14px;min-height:21px;margin:-4px 0 10px}
+.note.stop{background:var(--bad-bg);border:1.5px solid var(--red)}
+.note.stop b{color:var(--red)}
+.note button{font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.empty{color:var(--muted);text-align:center;padding:28px 12px;font-size:15px}
+
+/* ---------- common bits ---------- */
+.card{background:var(--surface);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.card h2{font-size:17px;margin-bottom:10px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:8px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:14px;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+.chip.y[aria-pressed="true"]{background:var(--yellow);color:var(--on-yellow);border-color:var(--yellow)}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:10px 18px;border-radius:14px;font-family:var(--display);font-weight:500;font-size:17px;text-align:center;background:var(--sunk);color:var(--ink);width:100%}
+.btn.red{background:var(--red);color:var(--on-red)}
+.btn.line{background:none;border:1.5px solid var(--line)}
+.btn.sm{min-height:40px;font-size:15px;padding:6px 14px;width:auto}
+.btn:disabled{opacity:.45}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.step{display:inline-flex;align-items:center;background:var(--sunk);border-radius:12px}
+.step button{width:40px;height:40px;font-size:22px;line-height:1;text-align:center;font-family:var(--display)}
+.step span{min-width:30px;text-align:center;font-family:var(--display);font-size:17px}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.tag.low{background:var(--yellow);color:var(--on-yellow)}
+.tag.out,.tag.bad{background:var(--bad-bg);color:var(--red)}
+.tag.ok{background:var(--sunk);color:var(--muted)}
+
+/* ---------- sell ---------- */
+.sell{display:block}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.tile{display:flex;flex-direction:column;background:var(--surface);border-radius:18px;padding:6px 6px 10px;box-shadow:var(--shadow);position:relative;transition:transform .08s}
+.tile:active{transform:scale(.97)}
+.tile .ph{display:block;position:relative;aspect-ratio:5/4;border-radius:13px;overflow:hidden;background:var(--sunk)}
+.tile .ph img{width:100%;height:100%;object-fit:cover}
+.tile .noimg{display:grid;place-items:center;width:100%;height:100%;font-family:var(--display);font-size:40px;color:var(--muted)}
+.tile .nm{padding:8px 6px 0;font-size:14.5px;font-weight:500;line-height:1.3;min-height:2.6em}
+.tile .pr{padding:2px 6px 0;font-family:var(--display);font-size:20px;display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.tile .cnt{position:absolute;top:6px;left:6px;min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:var(--red);color:var(--on-red);font-family:var(--display);font-size:16px;display:grid;place-items:center;font-weight:500}
+.tile .st{position:absolute;right:6px;bottom:6px}
+.tile:disabled .ph img{filter:grayscale(1);opacity:.5}
+.tile:disabled .pr,.tile:disabled .nm{color:var(--muted)}
+.cartbar{position:fixed;left:12px;right:12px;bottom:calc(66px + env(safe-area-inset-bottom,0px));z-index:15;display:flex;align-items:center;gap:12px;background:var(--red);color:var(--on-red);border-radius:18px;padding:12px 18px;font-family:var(--display);font-size:18px;box-shadow:0 10px 24px -8px rgba(219,18,48,.55)}
+.cartbar .n{background:var(--yellow);color:var(--on-yellow);border-radius:999px;min-width:32px;height:32px;display:grid;place-items:center;padding:0 9px}
+.cartbar .t{margin-left:auto;font-size:22px}
+.aside{display:none}
+.cart .ln{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
+.cart .ln .tx{flex:1;min-width:0}
+.cart .ln .tx b{display:block;font-weight:600;font-size:15px}
+.cart .ln .tx small{display:block;color:var(--muted);font-size:13px}
+.cart .ln .am{font-family:var(--display);font-size:17px;min-width:56px;text-align:right}
+.cart .tot{display:flex;justify-content:space-between;padding:4px 0;font-size:15px;color:var(--muted)}
+.cart .tot.big{color:var(--ink);font-family:var(--display);font-size:28px;align-items:baseline;padding-top:8px}
+.cart .tot.big span:first-child{font-size:17px}
+.cart h3{font-size:14px;font-family:var(--body);font-weight:600;color:var(--muted);margin:14px 0 6px}
+.cart .chips{flex-wrap:wrap;overflow:visible;padding-bottom:4px}
+.cart .acts{margin-top:14px;display:grid;gap:10px}
+.linkbtn{color:var(--muted);font-size:14px;text-decoration:underline;text-underline-offset:3px;padding:6px;justify-self:center}
+
+/* ---------- summary ---------- */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.kpi{background:var(--surface);border-radius:18px;padding:14px 16px;box-shadow:var(--shadow)}
+.kpi span{display:block;font-size:13px;color:var(--muted)}
+.kpi b{font-family:var(--display);font-weight:500;font-size:26px;line-height:1.2}
+.kpi.main{grid-column:1/-1;background:var(--ink);color:var(--bg)}
+.kpi.main span{color:inherit;opacity:.7}
+.kpi.main b{font-size:40px}
+.kpi.main i{font-style:normal;display:inline-block;margin-left:10px;background:var(--yellow);color:var(--on-yellow);border-radius:999px;padding:2px 10px;font-size:14px;font-family:var(--body);font-weight:600;vertical-align:middle}
+.read{font-size:14px;color:var(--muted);margin:-4px 0 10px;min-height:21px}
+.read b{color:var(--ink);font-family:var(--display);font-weight:500;font-size:16px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:170px;border-bottom:1.5px solid var(--line)}
+.bars button{flex:1;height:100%;display:flex;align-items:flex-end;min-width:0;border-radius:6px 6px 0 0}
+.bars i{display:block;width:100%;background:var(--red);opacity:.38;border-radius:6px 6px 0 0;min-height:2px}
+.bars button[aria-pressed="true"] i{opacity:1}
+.bars button.zero i{background:var(--line);opacity:1}
+.xl{display:flex;gap:3px;margin-top:4px}
+.xl span{flex:1;min-width:0;text-align:center;font-size:11px;color:var(--muted);white-space:nowrap;overflow:visible}
+.rank{display:grid;gap:12px}
+.rk{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center}
+.rk img,.rk .noimg{width:44px;height:36px;border-radius:8px;object-fit:cover;background:var(--sunk)}
+.rk .nm{font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rk .bar{height:8px;border-radius:99px;background:var(--sunk);margin-top:4px;overflow:hidden}
+.rk .bar i{display:block;height:100%;border-radius:99px;background:var(--red)}
+.rk:first-child .bar i{background:var(--yellow);box-shadow:inset 0 0 0 1.5px var(--ink)}
+.rk .v{font-family:var(--display);font-size:16px;text-align:right;line-height:1.2}
+.rk .v small{display:block;font-family:var(--body);font-size:12px;color:var(--muted)}
+.split{display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--sunk);margin:6px 0 8px}
+.split i{background:var(--ink)} .split i+i{background:var(--yellow)}
+.legend{display:flex;justify-content:space-between;font-size:14px}
+.bill{display:flex;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line);align-items:flex-start}
+.bill:last-child{border-bottom:0}
+.bill .tx{flex:1;min-width:0;font-size:14px}
+.bill .tx b{font-weight:600}
+.bill .tx small{display:block;color:var(--muted)}
+.bill .am{font-family:var(--display);font-size:16px;text-align:right}
+.bill.void .tx,.bill.void .am{text-decoration:line-through;color:var(--muted)}
+.twocol{display:block}
+
+/* ---------- stock / settings ---------- */
+.alert{display:flex;gap:10px;align-items:center;padding:8px 0;font-size:14.5px;border-bottom:1px dashed var(--line)}
+.alert:last-child{border-bottom:0}
+.alert span:first-child{flex:1}
+.sk{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px dashed var(--line)}
+.sk:last-child{border-bottom:0}
+.sk img,.sk .noimg{width:56px;height:46px;border-radius:10px;object-fit:cover;background:var(--sunk)}
+.sk .noimg,.rk .noimg{display:grid;place-items:center;font-family:var(--display);color:var(--muted)}
+.sk .nm{font-weight:600;font-size:15px;line-height:1.3}
+.sk .mt{font-size:13px;color:var(--muted)}
+.sk .mt b{color:var(--ok);font-weight:600}
+.sk .rt{display:grid;gap:6px;justify-items:end}
+.setrow{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px dashed var(--line)}
+.setrow:last-child{border-bottom:0}
+.setrow .tx{flex:1;min-width:0}
+.setrow .tx b{display:block;font-weight:600}
+.setrow .tx small{color:var(--muted);font-size:13.5px;display:block}
+
+/* ---------- sheet ---------- */
+.scrim{position:fixed;inset:0;background:rgba(10,14,30,.55);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:520px;max-height:92%;overflow:auto;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));animation:up .18s ease-out}
+@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+.sheet .hd{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.sheet .hd h2{flex:1;font-size:20px}
+.sheet .x{width:40px;height:40px;border-radius:50%;background:var(--sunk);font-size:20px;text-align:center}
+.opt-img{width:100%;aspect-ratio:5/2;object-fit:cover;border-radius:14px;margin-bottom:12px}
+.tops{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.tops button{display:flex;justify-content:space-between;gap:6px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);font-size:15px}
+.tops button[aria-pressed="true"]{background:var(--yellow);border-color:var(--yellow);color:var(--on-yellow);font-weight:600}
+.qtyrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+label.f{display:block;font-size:14px;color:var(--muted);margin-bottom:12px}
+label.f input,label.f select,.in{display:block;width:100%;margin-top:4px;padding:11px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);font-size:16px;color:var(--ink)}
+.cashin{font-family:var(--display);font-size:34px!important;text-align:right}
+.quick{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.change{display:flex;justify-content:space-between;align-items:baseline;background:var(--sunk);border-radius:14px;padding:12px 16px;margin-bottom:14px;font-size:15px}
+.change b{font-family:var(--display);font-weight:500;font-size:28px}
+.qr{background:#fff;border-radius:16px;padding:14px;width:min(260px,70%);margin:6px auto 10px}
+.qr svg{display:block;width:100%;height:auto}
+.center{text-align:center}
+.erow{display:grid;grid-template-columns:1.6fr 1fr 1fr 36px;gap:6px;margin-bottom:8px;align-items:center}
+.erow .in{margin:0;padding:10px 8px;font-size:15px;min-width:0}
+.erow button{font-size:20px;color:var(--muted);text-align:center}
+.ehead{font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;font-size:15px;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
+
+.mfind .in{margin-top:0}
+.pimg{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.pprev{width:120px;flex:none;aspect-ratio:5/4;max-width:40%;border-radius:12px;overflow:hidden;background:var(--sunk);display:grid;place-items:center;color:var(--muted);font-size:13px;text-align:center;padding:4px}
+.pprev img{width:100%;height:100%;object-fit:cover;border-radius:10px}
+.pacts{display:grid;gap:4px;justify-items:start;min-width:0}
+.pacts small{color:var(--muted);font-size:13px}
+.pacts .linkbtn{justify-self:start}
+label.btn{cursor:pointer}
+.mbox{background:var(--sunk);border-radius:14px;padding:12px 14px;display:grid;gap:8px}
+.mbox .top1{display:flex;gap:10px;align-items:flex-start}
+.mbox .top1 div{flex:1;min-width:0}
+.mbox b{font-weight:600}
+.mbox small{display:block;color:var(--muted);font-size:13px}
+.mbox .chip{justify-self:start;white-space:normal;text-align:left}
+.mrow{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px dashed var(--line);width:100%}
+.mrow:last-child{border-bottom:0}
+.mrow>span{min-width:0}
+.mrow .nm{display:block;font-weight:600;font-size:15px}
+.mrow small{display:block;color:var(--muted);font-size:13px}
+.mrow .pt{font-family:var(--display);font-size:22px;text-align:right;line-height:1.1}
+.mrow .pt small{font-family:var(--body);font-size:12px}
+.prog{display:block;height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
+.prog i{display:block;height:100%;background:var(--yellow);box-shadow:inset 0 0 0 1.5px var(--ink);border-radius:99px}
+.erow.e5{grid-template-columns:1.7fr 1fr 1fr .9fr 28px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.stats div{background:var(--sunk);border-radius:12px;padding:10px 12px;min-width:0}
+.stats span{display:block;font-size:12.5px;color:var(--muted)}
+.stats b{font-family:var(--display);font-weight:500;font-size:19px}
+.h3s{font-family:var(--body);font-weight:600;font-size:14px;color:var(--muted);margin:16px 0 2px}
+@media (min-width:600px){ .grid{grid-template-columns:repeat(3,1fr)} .kpis{grid-template-columns:repeat(4,1fr)} .kpi.main{grid-column:span 2} }
+@media (min-width:960px){
+  .top{padding-top:18px}
+  .tabs{position:static;display:flex;gap:4px;background:none;border:0;padding:0}
+  .tabs button{flex-direction:row;gap:8px;padding:9px 16px;border-radius:999px;font-size:15px}
+  .tabs button[aria-current="page"]{background:var(--ink);color:var(--bg)}
+  .tabs .dot{position:static;border:0}
+  .tabs svg{width:20px;height:20px}
+  main{padding-bottom:40px}
+  .sell{display:grid;grid-template-columns:1fr 380px;gap:20px;align-items:start}
+  .aside{display:block;position:sticky;top:12px;background:var(--surface);border-radius:20px;padding:18px;box-shadow:var(--shadow)}
+  .aside>h2{font-size:19px;margin-bottom:6px}
+  .cartbar{display:none}
+  .grid{grid-template-columns:repeat(4,1fr)}
+  .twocol{display:grid;grid-template-columns:1.3fr 1fr;gap:14px;align-items:start}
+  .scrim{align-items:center}
+  .sheet{border-radius:22px}
+  .toast{bottom:32px}
+}
+@media (prefers-reduced-motion:reduce){ .sheet{animation:none} .tile{transition:none} }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1 id="shopName">ร้านรามยอน</h1>
+  <nav class="tabs" id="tabs" aria-label="เมนูหลัก"></nav>
+  <div class="day" id="dayBox"></div>
+</header>
+<main id="view"></main>
+<div id="cartBarSlot"></div>
+<div id="sheetSlot"></div>
+<div id="toastSlot" aria-live="polite"></div>
+
+<script>
+const IMG = {"samyang": "assets/products/samyang.jpg", "cha-spicy": "assets/products/cha-spicy.jpg", "kimchi": "assets/products/kimchi.jpg", "cha": "assets/products/cha.jpg", "shin": "assets/products/shin.jpg", "bd-original": "assets/products/bd-original.jpg", "bd-3x": "assets/products/bd-3x.jpg", "bd-carbo": "assets/products/bd-carbo.jpg", "bd-cheese": "assets/products/bd-cheese.jpg", "bd-cream": "assets/products/bd-cream.jpg"};
+const DEFAULT_CFG = {"shopName": "ร้านรามยอน", "promptpay": "", "expDays": 30, "products": [{"id": "bd-carbo", "img": "bd-carbo", "name": "บุลดัก คาโบนาร่า", "cat": "บุลดักผัดเผ็ด", "price": 85, "cost": 46, "stock": 24, "low": 6, "exp": "2027-05-31", "active": true}, {"id": "bd-cheese", "img": "bd-cheese", "name": "บุลดัก ชีส", "cat": "บุลดักผัดเผ็ด", "price": 85, "cost": 46, "stock": 18, "low": 6, "exp": "2027-07-07", "active": true}, {"id": "bd-original", "img": "bd-original", "name": "บุลดัก ออริจินัล", "cat": "บุลดักผัดเผ็ด", "price": 79, "cost": 42, "stock": 20, "low": 6, "exp": "", "active": true}, {"id": "bd-cream", "img": "bd-cream", "name": "บุลดัก ครีมคาโบนาร่า", "cat": "บุลดักผัดเผ็ด", "price": 89, "cost": 48, "stock": 4, "low": 6, "exp": "2027-07-01", "active": true}, {"id": "bd-3x", "img": "bd-3x", "name": "บุลดัก เผ็ด x3", "cat": "บุลดักผัดเผ็ด", "price": 85, "cost": 45, "stock": 12, "low": 5, "exp": "2027-07-06", "active": true}, {"id": "cha", "img": "cha", "name": "จาจาโรนี จาจังมยอน", "cat": "จาจังมยอน", "price": 75, "cost": 38, "stock": 15, "low": 5, "exp": "2027-06-11", "active": true}, {"id": "cha-spicy", "img": "cha-spicy", "name": "จาจาโรนี จาจังเผ็ด", "cat": "จาจังมยอน", "price": 79, "cost": 40, "stock": 9, "low": 5, "exp": "", "active": true}, {"id": "shin", "img": "shin", "name": "ชิน รามยอน", "cat": "รามยอนน้ำ", "price": 65, "cost": 30, "stock": 16, "low": 5, "exp": "", "active": true}, {"id": "kimchi", "img": "kimchi", "name": "กิมจิ ราเมง", "cat": "รามยอนน้ำ", "price": 59, "cost": 26, "stock": 3, "low": 5, "exp": "2027-03-12", "active": true}, {"id": "samyang", "img": "samyang", "name": "ซัมยัง ราเมง ออริจินัล", "cat": "รามยอนน้ำ", "price": 59, "cost": 25, "stock": 14, "low": 5, "exp": "2027-05-06", "active": true}], "toppings": [{"id": "t-egg", "name": "ไข่ต้ม", "price": 10, "cost": 5}, {"id": "t-cheese", "name": "ชีสสไลซ์", "price": 15, "cost": 8}, {"id": "t-sausage", "name": "ไส้กรอก", "price": 15, "cost": 8}, {"id": "t-crab", "name": "ปูอัด", "price": 15, "cost": 7}, {"id": "t-kimchi", "name": "กิมจิ", "price": 20, "cost": 10}, {"id": "t-tteok", "name": "ต๊อกบกกี", "price": 20, "cost": 9}], "promos": [{"id": "d-10", "name": "", "type": "pct", "val": 10}, {"id": "d-20", "name": "", "type": "baht", "val": 20}, {"id": "d-std", "name": "นักเรียน ลด 5%", "type": "pct", "val": 5}]};
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const B = n => '฿' + Math.round(n || 0).toLocaleString('en-US');
+const N = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+const pad = n => String(n).padStart(2, '0');
+const dkey = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const today = () => dkey(new Date());
+const parts = k => k.split('-').map(Number);
+const addDays = (k, n) => { const [y, m, d] = parts(k); return dkey(new Date(y, m - 1, d + n)); };
+const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const TH_D = ['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'];
+const fmtDay = k => { const [y, m, d] = parts(k); return TH_D[new Date(y, m - 1, d).getDay()] + ' ' + d + ' ' + TH_M[m - 1]; };
+const clone = o => JSON.parse(JSON.stringify(o));
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+/* ---------- state ---------- */
+const S = {
+  ready: false, mode: 'loading', cfg: null, days: {},
+  tab: 'sell', cat: 'ทั้งหมด', cart: [], disc: { type: 'none' },
+  range: 'today', sel: null, rankBy: 'qty', sheet: null, mem: [], cm: null, redeem: false, mq: '', imgs: {}, ro: false, offline: false
+};
+let db = null, dl = null, toastTimer = null;
+
+function normCfg(c) {
+  c = c || {};
+  return {
+    shopName: c.shopName || 'ร้านรามยอน', promptpay: c.promptpay || '', expDays: c.expDays || 30,
+    products: Array.isArray(c.products) ? c.products : [],
+    toppings: Array.isArray(c.toppings) ? c.toppings : [],
+    promos: Array.isArray(c.promos) ? c.promos : [],
+    loyalty: { per: +(c.loyalty || {}).per || 60, need: +(c.loyalty || {}).need || 10, bday: +(c.loyalty || {}).bday || 2 }
+  };
+}
+const prod = id => S.cfg.products.find(p => p.id === id);
+const imgOf = p => (p && S.imgs[p.id]) || (p && p.img && IMG[p.img]) || '';
+const thumb = (p, name) => imgOf(p) ? `<img src="${imgOf(p)}" alt="">` : `<span class="noimg">${esc((name || '?').trim().charAt(0))}</span>`;
+
+/* ---------- persistence ---------- */
+const W = {};
+function queueWrite(path, getData) {
+  if (!db) return;
+  const w = W[path] || (W[path] = { busy: false, dirty: false });
+  if (w.busy) { w.dirty = true; return; }
+  w.busy = true;
+  (async () => {
+    do {
+      w.dirty = false;
+      try {
+        const data = getData();
+        if (data === null) await db.doc(path).delete(); else await db.doc(path).set(clone(data));
+      } catch (e) {
+        writeFailed(e);
+        if (e && e.code === 'unavailable') { S.offline = true; render(); await new Promise(r => setTimeout(r, 4000)); w.dirty = true; }
+      }
+    } while (w.dirty);
+    w.busy = false;
+    if (S.offline && !Object.values(W).some(x => x.busy)) { S.offline = false; render(); toast('บันทึกข้อมูลที่ค้างไว้เรียบร้อยแล้ว'); }
+  })();
+}
+function writeFailed(e) {
+  const code = e && e.code;
+  if (code === 'denied' && !S.ro) { S.ro = true; render(); }
+  if (code === 'unavailable' && S.offline) return;
+  toast(code === 'quota_exceeded' ? 'ที่เก็บข้อมูลเต็ม ลบบิลเก่าหรือส่งออกแล้วล้างข้อมูลก่อน'
+      : code === 'denied' ? 'บัญชีนี้ไม่มีสิทธิ์บันทึก ข้อมูลล่าสุดยังไม่ถูกเก็บ'
+      : 'ยังบันทึกไม่ได้ ระบบจะลองใหม่ให้เองเมื่อเน็ตกลับมา');
+}
+let cfgTimer = null;
+function saveCfg() { clearTimeout(cfgTimer); cfgTimer = setTimeout(() => { cfgTimer = null; queueWrite('config/shop', () => S.cfg); }, 350); }
+function saveImg(id) { queueWrite('images/' + id, () => S.imgs[id] ? { data: S.imgs[id] } : null); }
+function saveMem() { queueWrite('members/all', () => ({ list: S.mem })); }
+function saveDay(k) { queueWrite('days/' + k, () => { const d = S.days[k]; return d && d.bills.length ? d : null; }); }
+
+/* ---------- Supabase storage ----------
+   Every record is one row in table "docs": path ("config/shop", "days/2026-10-19",
+   "members/all", "images/<productId>") + data (jsonb). This adapter gives the app the
+   same doc/collection API it was written against. */
+let sb = null;
+const sbErr = e => ({ code: e && (e.code === '42501' || /row-level security|JWT|permission/i.test(e.message || '')) ? 'denied' : 'unavailable', message: (e && e.message) || '' });
+function makeDb(client) {
+  const listeners = new Set();
+  client.channel('docs-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'docs' }, p => {
+    const path = (p.new && p.new.path) || (p.old && p.old.path);
+    if (!path) return;
+    const removed = p.eventType === 'DELETE';
+    listeners.forEach(fn => fn(path, removed ? undefined : p.new.data, removed));
+  }).subscribe();
+  const snapOf = (path, data) => ({ id: path.split('/').pop(), exists: data !== undefined, data: () => data, metadata: { fromCache: false, hasPendingWrites: false } });
+  const doc = path => ({
+    id: path.split('/').pop(), path,
+    async get() { const { data, error } = await client.from('docs').select('data').eq('path', path).maybeSingle(); if (error) throw sbErr(error); return snapOf(path, data ? data.data : undefined); },
+    async set(body) { const { error } = await client.from('docs').upsert({ path, data: body, updated_at: new Date().toISOString() }); if (error) throw sbErr(error); },
+    async delete() { const { error } = await client.from('docs').delete().eq('path', path); if (error) throw sbErr(error); },
+    onSnapshot(next, fail) {
+      let live = true;
+      const fn = (p, data, removed) => { if (live && p === path) next(snapOf(path, removed ? undefined : data)); };
+      listeners.add(fn);
+      this.get().then(sn => live && next(sn), e => fail && fail(e));
+      return () => { live = false; listeners.delete(fn); };
+    }
+  });
+  const query = (coll, from) => ({
+    // only the app's one filter is needed: days on or after a date (the day's id is its date)
+    where(field, op, value) { return query(coll, coll + '/' + value); },
+    limit() { return this; },
+    async get() {
+      let q = client.from('docs').select('path,data').like('path', coll + '/%');
+      if (from) q = q.gte('path', from);
+      const { data, error } = await q.limit(5000); if (error) throw sbErr(error);
+      const docs = data.map(r => snapOf(r.path, r.data));
+      return { docs, size: docs.length, empty: !docs.length, docChanges: () => docs.map(d => ({ type: 'added', doc: d })) };
+    },
+    onSnapshot(next, fail) {
+      let live = true; const cur = new Map();
+      const out = changes => ({ docs: [...cur.values()], size: cur.size, empty: !cur.size, docChanges: () => changes });
+      const fn = (p, data, removed) => {
+        if (!live || !p.startsWith(coll + '/') || p.split('/').length !== coll.split('/').length + 1 || (from && p < from)) return;
+        const id = p.split('/').pop(), old = cur.get(id);
+        if (removed) { if (!old) return; cur.delete(id); next(out([{ type: 'removed', doc: old }])); return; }
+        const d = snapOf(p, data); cur.set(id, d); next(out([{ type: old ? 'modified' : 'added', doc: d }]));
+      };
+      listeners.add(fn);
+      this.get().then(sn => { if (!live) return; sn.docs.forEach(d => cur.set(d.id, d)); next(out(sn.docs.map(d => ({ type: 'added', doc: d })))); }, e => fail && fail(e));
+      return () => { live = false; listeners.delete(fn); };
+    }
+  });
+  return { doc, collection: c => ({ ...query(c, null), path: c, doc: id => doc(c + '/' + id) }) };
+}
+function showLogin(client) {
+  document.body.classList.add('login');
+  return new Promise(done => {
+    $('#view').innerHTML = `<form class="card auth" id="loginForm"><h2>เข้าสู่ระบบร้าน</h2><p>ใช้อีเมลและรหัสผ่านของเจ้าของร้าน</p>
+      <label class="f">อีเมล<input id="lEmail" type="email" autocomplete="username" required></label>
+      <label class="f">รหัสผ่าน<input id="lPass" type="password" autocomplete="current-password" required></label>
+      <div class="err" id="lErr"></div><button class="btn red" id="lBtn">เข้าสู่ระบบ</button></form>`;
+    $('#loginForm').addEventListener('submit', async e => {
+      e.preventDefault(); $('#lBtn').disabled = true; $('#lErr').textContent = '';
+      const { error } = await client.auth.signInWithPassword({ email: $('#lEmail').value.trim(), password: $('#lPass').value });
+      $('#lBtn').disabled = false;
+      if (error) { $('#lErr').textContent = /invalid/i.test(error.message) ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : 'เข้าสู่ระบบไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่'; return; }
+      document.body.classList.remove('login'); done();
+    });
+  });
+}
+async function connectDb() {
+  const c = window.SHOP_CONFIG || {};
+  if (!window.supabase || !c.supabaseUrl || !c.supabaseAnonKey || /YOUR-/.test(c.supabaseUrl)) return null;
+  sb = window.supabase.createClient(c.supabaseUrl, c.supabaseAnonKey);
+  const { data } = await sb.auth.getSession();
+  if (!data || !data.session) await showLogin(sb);
+  return makeDb(sb);
+}
+dl = { async save({ filename, data }) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data])); a.download = filename;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+} };
+
+async function init() {
+  render();
+  try { db = await connectDb(); } catch (e) { db = null; }
+  if (!db) { S.cfg = normCfg(clone(DEFAULT_CFG)); S.mode = 'memory'; S.ready = true; render(); return; }
+  S.mode = 'db';
+  const fail = () => { if (!S.ready) { S.cfg = normCfg(clone(DEFAULT_CFG)); S.mode = 'memory'; S.ready = true; db = null; render(); } };
+  db.doc('config/shop').onSnapshot(snap => {
+    const w = W['config/shop'];
+    if (S.ready && ((w && w.busy) || cfgTimer)) return;
+    S.cfg = normCfg(snap.exists ? clone(snap.data()) : clone(DEFAULT_CFG));
+    S.ready = true; render();
+  }, fail);
+  db.collection('images').onSnapshot(snap => {
+    snap.docChanges().forEach(ch => {
+      const id = ch.doc.id, w = W['images/' + id];
+      if (w && w.busy) return;
+      if (ch.type === 'removed') delete S.imgs[id];
+      else { const v = ch.doc.data(); if (v && v.data) S.imgs[id] = v.data; }
+    });
+    render();
+  }, () => {});
+  db.doc('members/all').onSnapshot(snap => {
+    const w = W['members/all'];
+    if (w && w.busy) return;
+    const v = snap.exists ? snap.data() : null;
+    S.mem = v && Array.isArray(v.list) ? clone(v.list) : [];
+    render();
+  }, () => {});
+  const [y, m] = parts(today());
+  const cutoff = dkey(new Date(y, m - 2, 1));
+  db.collection('days').where('date', '>=', cutoff).onSnapshot(snap => {
+    snap.docs.forEach(d => {
+      const w = W['days/' + d.id];
+      if (w && w.busy) return;
+      const v = clone(d.data());
+      if (!Array.isArray(v.bills)) v.bills = [];
+      S.days[d.id] = v;
+    });
+    render();
+  }, () => {});
+}
+
+/* ---------- money maths ---------- */
+const unitOf = l => l.price + l.tops.reduce((a, t) => a + t.price, 0);
+const unitCost = l => (l.cost || 0) + l.tops.reduce((a, t) => a + (t.cost || 0), 0);
+const cartQty = () => S.cart.reduce((a, l) => a + l.q, 0);
+const cartSub = () => S.cart.reduce((a, l) => a + unitOf(l) * l.q, 0);
+const TH_MF = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+const member = id => S.mem.find(m => m.id === id);
+const curMem = () => S.cm ? member(S.cm) : null;
+const isBday = m => !!m && +m.bm === new Date().getMonth() + 1;
+const earnPts = (total, m) => m ? Math.floor(total / S.cfg.loyalty.per) * (isBday(m) ? S.cfg.loyalty.bday : 1) : 0;
+const fmtPhone = p => { p = String(p || ''); return p.length === 10 ? p.slice(0, 3) + '-' + p.slice(3, 6) + '-' + p.slice(6) : p; };
+function cartFree() {
+  const m = curMem();
+  if (!S.redeem || !m || !S.cart.length || (m.pts || 0) < S.cfg.loyalty.need) return 0;
+  return Math.max(...S.cart.map(l => l.price));
+}
+function cartDisc() {
+  const s = cartSub() - cartFree(), d = S.disc;
+  if (d.type === 'pct') return Math.min(s, Math.round(s * d.val / 100));
+  if (d.type === 'baht') return Math.min(s, d.val);
+  return 0;
+}
+const cartTotal = () => cartSub() - cartFree() - cartDisc();
+const inCart = id => S.cart.filter(l => l.p === id).reduce((a, l) => a + l.q, 0);
+const promoLabel = p => p.name || (p.type === 'pct' ? `ลด ${p.val}%` : `ลด ฿${p.val}`);
+const liveBills = k => ((S.days[k] || {}).bills || []).filter(b => !b.void);
+
+/* ---------- render: shell ---------- */
+const ICON = {
+  sell: '<path d="M4 6h16l-1.5 9h-13z"/><path d="M8 6V4h8v2"/><circle cx="9" cy="19" r="1.4"/><circle cx="16" cy="19" r="1.4"/>',
+  sum: '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M21 20H3"/>',
+  mem: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M18 4.5l1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z"/>',
+  stock: '<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>',
+  set: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'
+};
+function stockAlerts() {
+  if (!S.cfg) return [];
+  const out = [], t = today();
+  S.cfg.products.forEach(p => {
+    if (p.active === false) return;
+    if ((p.stock || 0) <= 0) out.push({ p, kind: 'out', text: 'หมดสต็อก' });
+    else if (p.stock <= (p.low ?? 5)) out.push({ p, kind: 'low', text: `เหลือ ${p.stock} ซอง` });
+    if (p.exp) {
+      const days = Math.round((new Date(p.exp) - new Date(t)) / 864e5);
+      if (days < 0) out.push({ p, kind: 'bad', text: `หมดอายุแล้ว ${-days} วัน` });
+      else if (days <= S.cfg.expDays) out.push({ p, kind: 'low', text: `หมดอายุในอีก ${days} วัน` });
+    }
+  });
+  return out;
+}
+function render() {
+  const tabs = [['sell', 'ขาย'], ['sum', 'สรุปยอด'], ['mem', 'สมาชิก'], ['stock', 'สต็อก'], ['set', 'ตั้งค่า']];
+  const alerts = S.ready ? stockAlerts().length : 0;
+  $('#tabs').innerHTML = tabs.map(([k, t]) => `<button data-act="tab" data-id="${k}" ${S.tab === k ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${t}${k === 'stock' && alerts ? '<span class="dot" title="มีของต้องดู"></span>' : ''}</button>`).join('');
+  if (!S.ready) { $('#view').innerHTML = '<p class="empty">กำลังโหลดข้อมูลร้าน…</p>'; return; }
+  $('#shopName').textContent = S.cfg.shopName;
+  const tb = liveBills(today());
+  $('#dayBox').innerHTML = `ขายวันนี้<b>${B(tb.reduce((a, b) => a + b.total, 0))}</b>`;
+  const mem = S.offline ? '<p class="note stop"><b>ยังบันทึกข้อมูลล่าสุดไม่ได้</b> ตรวจอินเทอร์เน็ต ระบบจะลองใหม่ให้เอง อย่าเพิ่งปิดหน้านี้</p>'
+    : S.ro ? '<p class="note stop"><b>บัญชีนี้บันทึกข้อมูลไม่ได้</b> ออกจากระบบในแท็บตั้งค่าแล้วเข้าใหม่ด้วยบัญชีเจ้าของร้าน</p>'
+    : S.mode === 'memory' ? '<p class="note stop"><b>ยังไม่ได้ต่อฐานข้อมูล ข้อมูลจะหายเมื่อปิดหรือรีเฟรชหน้า</b> ใส่ค่า Supabase ในไฟล์ config.js ตามขั้นตอนใน README</p>' : '';
+  $('#view').innerHTML = mem + ({ sell: viewSell, sum: viewSum, mem: viewMem, stock: viewStock, set: viewSet }[S.tab])();
+  const q = cartQty();
+  $('#cartBarSlot').innerHTML = S.tab === 'sell' && q ? `<button class="cartbar" data-act="openCart"><span class="n">${q}</span>ดูบิล<span class="t num">${B(cartTotal())}</span></button>` : '';
+}
+
+/* ---------- render: sell ---------- */
+function viewSell() {
+  const ps = S.cfg.products.filter(p => p.active !== false);
+  if (!ps.length) return '<p class="empty">ยังไม่มีสินค้าในร้าน ไปที่แท็บสต็อกแล้วกด “เพิ่มสินค้า”</p>';
+  const cats = ['ทั้งหมด', ...new Set(ps.map(p => p.cat).filter(Boolean))];
+  if (!cats.includes(S.cat)) S.cat = 'ทั้งหมด';
+  const list = ps.filter(p => S.cat === 'ทั้งหมด' || p.cat === S.cat);
+  const tiles = list.map(p => {
+    const left = (p.stock || 0) - inCart(p.id), n = inCart(p.id);
+    const st = (p.stock || 0) <= 0 ? '<span class="tag out">หมด</span>' : p.stock <= (p.low ?? 5) ? `<span class="tag low">เหลือ ${p.stock}</span>` : '';
+    return `<button class="tile" data-act="pick" data-id="${p.id}" ${left <= 0 ? 'disabled' : ''}>
+      <span class="ph">${thumb(p, p.name)}${n ? `<b class="cnt">${n}</b>` : ''}<span class="st">${st}</span></span>
+      <span class="nm">${esc(p.name)}</span><span class="pr">${B(p.price)}</span></button>`;
+  }).join('');
+  return `<div class="sell"><div>
+    <div class="chips">${cats.map(c => `<button class="chip" data-act="cat" data-id="${esc(c)}" aria-pressed="${S.cat === c}">${esc(c)}</button>`).join('')}</div>
+    <div class="grid">${tiles}</div></div>
+    <aside class="aside"><h2>บิลนี้</h2>${cartHTML()}</aside></div>`;
+}
+function memBlock() {
+  const m = curMem(), L = S.cfg.loyalty, earn = earnPts(cartTotal(), m);
+  return m ? `<div class="mbox"><div class="top1"><div><b>${esc(m.name)}</b><small>${esc(fmtPhone(m.phone))} มี ${m.pts || 0} แต้ม</small></div><button class="linkbtn" data-act="dropMem">เอาออก</button></div>
+      <small>บิลนี้ได้ +${earn} แต้ม${isBday(m) && L.bday > 1 ? ` <span class="tag low">เดือนเกิด แต้ม x${L.bday}</span>` : ''}</small>
+      ${(m.pts || 0) >= L.need ? `<button class="chip y" data-act="redeem" aria-pressed="${S.redeem}">ใช้ ${L.need} แต้ม แลกฟรี 1 ชาม</button>` : `<small>อีก ${L.need - (m.pts || 0)} แต้ม แลกฟรี 1 ชาม</small>`}</div>`
+    : `<div class="mfind"><input class="in mqi" type="search" inputmode="tel" autocomplete="off" placeholder="พิมพ์เบอร์โทรหรือชื่อสมาชิก" aria-label="เบอร์โทรหรือชื่อสมาชิก"><div class="mres"></div></div>`;
+}
+function memFind(q) {
+  q = (q || '').trim();
+  if (!q) return '';
+  const qd = q.replace(/\D/g, ''), ql = q.toLowerCase();
+  const has = S.mem.some(m => String(m.name).toLowerCase().includes(ql) || (qd && String(m.phone).includes(qd)));
+  const exact = qd && S.mem.some(m => m.phone === qd);
+  return (has ? memListHTML(q, 'chooseMem') : '<p class="read" style="margin:10px 0 0">ไม่พบสมาชิกเบอร์หรือชื่อนี้</p>')
+    + (exact ? '' : `<button class="btn line sm" data-act="newMem" data-phone="${esc(qd)}" style="width:100%;margin-top:8px">สมัครสมาชิกใหม่${qd ? ' เบอร์ ' + esc(qd) : ''}</button>`);
+}
+function keepRecv() { const r = $('#recv'); if (r && S.sheet) S.sheet.recv = r.value; }
+function cartHTML() {
+  if (!S.cart.length) return '<p class="empty">ยังไม่มีรายการ แตะรูปสินค้าเพื่อเพิ่มลงบิล</p>';
+  const lines = S.cart.map((l, i) => `<div class="ln"><div class="tx"><b>${esc(l.n)}</b>
+    <small>${l.tops.length ? esc(l.tops.map(t => '+' + t.n).join(' ')) + ' ' : ''}${B(unitOf(l))} ต่อชาม</small></div>
+    <span class="step"><button data-act="lq" data-id="${i}" data-d="-1" aria-label="ลด">−</button><span>${l.q}</span><button data-act="lq" data-id="${i}" data-d="1" aria-label="เพิ่ม">+</button></span>
+    <span class="am">${B(unitOf(l) * l.q)}</span></div>`).join('');
+  const d = S.disc, dv = cartDisc();
+  const chips = [`<button class="chip y" data-act="disc" data-id="none" aria-pressed="${d.type === 'none'}">ไม่ลด</button>`]
+    .concat(S.cfg.promos.map(p => `<button class="chip y" data-act="disc" data-id="${p.id}" aria-pressed="${d.id === p.id}">${esc(promoLabel(p))}</button>`))
+    .concat(`<button class="chip y" data-act="discCustom" aria-pressed="${d.id === 'custom'}">${d.id === 'custom' ? esc(d.label) : 'กำหนดเอง'}</button>`).join('');
+  const L = S.cfg.loyalty, free = cartFree(), memHTML = memBlock();
+  return `<div class="cart">${lines}
+    <h3>สมาชิก</h3>${memHTML}
+    <h3>ส่วนลด</h3><div class="chips">${chips}</div>
+    <div class="tot"><span>รวม ${cartQty()} ชาม</span><span>${B(cartSub())}</span></div>
+    ${free ? `<div class="tot"><span>แลก ${L.need} แต้ม ฟรี 1 ชาม</span><span>−${B(free)}</span></div>` : ''}
+    ${dv ? `<div class="tot"><span>${esc(d.label)}</span><span>−${B(dv)}</span></div>` : ''}
+    <div class="tot big"><span>ต้องรับ</span><span>${B(cartTotal())}</span></div>
+    <div class="acts"><div class="row2"><button class="btn red" data-act="pay" data-id="cash">รับเงินสด</button><button class="btn" data-act="pay" data-id="qr">พร้อมเพย์ QR</button></div>
+    <button class="linkbtn" data-act="clearCart">ล้างบิลนี้</button></div></div>`;
+}
+
+/* ---------- render: summary ---------- */
+function rangeDays(r) {
+  const t = today(), [y, m, d] = parts(t);
+  if (r === 'today') return [t];
+  if (r === '7d') return Array.from({ length: 7 }, (_, i) => addDays(t, i - 6));
+  if (r === 'month') return Array.from({ length: d }, (_, i) => dkey(new Date(y, m - 1, i + 1)));
+  const n = new Date(y, m - 1, 0).getDate();
+  return Array.from({ length: n }, (_, i) => dkey(new Date(y, m - 2, i + 1)));
+}
+function viewSum() {
+  const days = rangeDays(S.range);
+  const bills = days.flatMap(k => liveBills(k).map(b => ({ ...b, day: k })));
+  const all = days.flatMap(k => ((S.days[k] || {}).bills || []).map(b => ({ ...b, day: k })));
+  const rev = bills.reduce((a, b) => a + b.total, 0), cost = bills.reduce((a, b) => a + (b.cost || 0), 0);
+  const profit = rev - cost, disc = bills.reduce((a, b) => a + (b.disc || 0) + (b.free || 0), 0);
+  const bowls = bills.reduce((a, b) => a + b.items.reduce((x, l) => x + l.q, 0), 0);
+  const hasDemo = Object.values(S.days).some(d => (d.bills || []).some(b => b.demo));
+  const ranges = [['today', 'วันนี้'], ['7d', '7 วัน'], ['month', 'เดือนนี้'], ['prev', 'เดือนก่อน']];
+
+  // chart buckets
+  let buckets;
+  if (S.range === 'today') {
+    const hrs = bills.map(b => new Date(b.t).getHours());
+    const lo = Math.min(10, ...hrs), hi = Math.max(21, ...hrs);
+    buckets = Array.from({ length: hi - lo + 1 }, (_, i) => ({ label: String(lo + i), full: `${pad(lo + i)}:00 ถึง ${pad(lo + i)}:59`, v: 0, n: 0, show: true }));
+    bills.forEach(b => { const x = buckets[new Date(b.t).getHours() - lo]; x.v += b.total; x.n++; });
+  } else {
+    buckets = days.map(k => {
+      const bs = liveBills(k), dd = parts(k)[2];
+      return { label: days.length <= 7 ? fmtDay(k).split(" ")[0] : String(dd), full: fmtDay(k), v: bs.reduce((a, b) => a + b.total, 0), n: bs.length, show: days.length <= 10 || dd === 1 || dd % 5 === 0 };
+    });
+  }
+  const max = Math.max(1, ...buckets.map(b => b.v));
+  let sel = S.sel;
+  if (sel == null || sel >= buckets.length) { sel = -1; buckets.forEach((b, i) => { if (b.v) sel = i; }); }
+  const read = sel >= 0 ? `${buckets[sel].full} <b>${B(buckets[sel].v)}</b> จาก ${buckets[sel].n} บิล` : 'ยังไม่มียอดขายในช่วงนี้';
+  const best = buckets.reduce((a, b) => b.v > a.v ? b : a, { v: 0 });
+
+  // ranking
+  const agg = {}, tops = {};
+  bills.forEach(b => b.items.forEach(l => {
+    const a = agg[l.p] || (agg[l.p] = { id: l.p, n: l.n, qty: 0, rev: 0, profit: 0 });
+    a.qty += l.q; a.rev += l.price * l.q; a.profit += (l.price - (l.cost || 0)) * l.q;
+    (l.tops || []).forEach(t => { const x = tops[t.n] || (tops[t.n] = { n: t.n, qty: 0, rev: 0 }); x.qty += l.q; x.rev += t.price * l.q; });
+  }));
+  const rank = Object.values(agg).sort((a, b) => b[S.rankBy] - a[S.rankBy]);
+  const rmax = Math.max(1, ...rank.map(r => r[S.rankBy]));
+  const rankHTML = rank.length ? rank.map(r => {
+    const p = prod(r.id);
+    return `<div class="rk">${thumb(p, r.n)}<div><div class="nm">${esc(r.n)}</div><div class="bar"><i style="width:${Math.max(3, r[S.rankBy] / rmax * 100)}%"></i></div></div>
+      <div class="v">${S.rankBy === 'qty' ? r.qty + ' ชาม' : B(r[S.rankBy])}<small>${S.rankBy === 'qty' ? B(r.rev) : r.qty + ' ชาม'}</small></div></div>`;
+  }).join('') : '<p class="empty">ยังไม่มีการขายในช่วงนี้</p>';
+  const topList = Object.values(tops).sort((a, b) => b.qty - a.qty);
+  const tmax = Math.max(1, ...topList.map(t => t.qty));
+
+  const ma = {};
+  bills.forEach(b => { if (!b.m) return; const x = ma[b.m] || (ma[b.m] = { n: (member(b.m) || {}).name || b.mn, spent: 0, v: 0 }); x.spent += b.total; x.v++; });
+  const ml = Object.values(ma).sort((a, b) => b.spent - a.spent).slice(0, 5), mrev = Object.values(ma).reduce((a, x) => a + x.spent, 0), mmax = Math.max(1, ...ml.map(x => x.spent));
+  const memCard = `<section class="card"><h2>ลูกค้าประจำ</h2>${ml.length ? `<p class="read">ยอดจากสมาชิก <b>${B(mrev)}</b> คิดเป็น ${rev ? Math.round(mrev / rev * 100) : 0}% ของยอดขาย</p><div class="rank">${ml.map(x => `<div class="rk" style="grid-template-columns:1fr auto"><div><div class="nm">${esc(x.n)}</div><div class="bar"><i style="width:${Math.max(3, x.spent / mmax * 100)}%"></i></div></div><div class="v">${B(x.spent)}<small>${x.v} ครั้ง</small></div></div>`).join('')}</div>` : '<p class="empty">ยังไม่มีบิลของสมาชิกในช่วงนี้ เลือกสมาชิกตอนคิดเงินเพื่อเริ่มสะสมแต้ม</p>'}</section>`;
+  const cash = bills.filter(b => b.pay === 'cash').reduce((a, b) => a + b.total, 0), qr = rev - cash;
+  const recent = all.sort((a, b) => b.t < a.t ? -1 : 1).slice(0, 12);
+  const billHTML = recent.length ? recent.map(b => `<div class="bill ${b.void ? 'void' : ''}"><div class="tx"><b>${S.range === 'today' ? '' : fmtDay(b.day) + ' '}${new Date(b.t).toTimeString().slice(0, 5)}</b> ${b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์'}${b.mn ? ' สมาชิก ' + esc(b.mn) : ''}
+      <small>${esc(b.items.map(l => l.n + (l.q > 1 ? ' ×' + l.q : '')).join(', '))}</small></div>
+      <div class="am">${B(b.total)}<br>${b.void ? '<span class="tag out">ยกเลิกแล้ว</span>' : `<button class="linkbtn" data-act="askVoid" data-id="${b.id}" data-day="${b.day}">ยกเลิกบิล</button>`}</div></div>`).join('')
+    : '<p class="empty">ยังไม่มีบิลในช่วงนี้ บิลที่ขายจะมาอยู่ตรงนี้</p>';
+
+  return `${hasDemo ? '<p class="note">ตัวเลขตอนนี้มีข้อมูลตัวอย่างปนอยู่ เพื่อให้เห็นหน้าตากราฟ <button data-act="askClearDemo">ลบข้อมูลตัวอย่าง</button></p>' : ''}
+  <div class="chips">${ranges.map(([k, t]) => `<button class="chip" data-act="range" data-id="${k}" aria-pressed="${S.range === k}">${t}</button>`).join('')}</div>
+  <div class="kpis">
+    <div class="kpi main"><span>ยอดขาย</span><b>${B(rev)}</b>${rev ? `<i>กำไร ${Math.round(profit / rev * 100)}%</i>` : ''}</div>
+    <div class="kpi"><span>กำไรหลังหักต้นทุน</span><b>${B(profit)}</b></div>
+    <div class="kpi"><span>จำนวนบิล</span><b>${bills.length}</b></div>
+    <div class="kpi"><span>เฉลี่ยต่อบิล</span><b>${B(bills.length ? rev / bills.length : 0)}</b></div>
+    <div class="kpi"><span>ขายไป</span><b>${bowls} ชาม</b></div>
+    <div class="kpi"><span>ส่วนลดที่ให้ไป</span><b>${B(disc)}</b></div>
+    <div class="kpi"><span>${S.range === 'today' ? 'ชั่วโมงขายดีสุด' : 'วันขายดีสุด'}</span><b style="font-size:19px">${best.v ? esc(S.range === 'today' ? best.label + ':00' : best.full) : 'ยังไม่มี'}</b></div>
+  </div>
+  <div class="twocol"><div>
+    <section class="card"><h2>${S.range === 'today' ? 'ยอดขายรายชั่วโมง' : 'ยอดขายรายวัน'}</h2>
+      <p class="read">${read}</p>
+      <div class="bars">${buckets.map((b, i) => `<button class="${b.v ? '' : 'zero'}" data-act="bar" data-id="${i}" aria-pressed="${i === sel}" aria-label="${esc(b.full)} ${B(b.v)}"><i style="height:${b.v ? Math.max(3, b.v / max * 100) : 0}%"></i></button>`).join('')}</div>
+      <div class="xl">${buckets.map(b => `<span>${b.show ? esc(b.label) : ''}</span>`).join('')}</div>
+    </section>
+    <section class="card"><h2>สินค้าขายดี</h2>
+      <div class="chips">${[['qty', 'ตามจำนวน'], ['rev', 'ตามยอดขาย'], ['profit', 'ตามกำไร']].map(([k, t]) => `<button class="chip" data-act="rankBy" data-id="${k}" aria-pressed="${S.rankBy === k}">${t}</button>`).join('')}</div>
+      <div class="rank">${rankHTML}</div>
+    </section></div><div>
+    <section class="card"><h2>ช่องทางรับเงิน</h2>
+      <div class="split"><i style="width:${rev ? cash / rev * 100 : 0}%"></i><i style="width:${rev ? qr / rev * 100 : 0}%"></i></div>
+      <div class="legend"><span>เงินสด <b class="num">${B(cash)}</b></span><span>พร้อมเพย์ <b class="num">${B(qr)}</b></span></div>
+    </section>
+    ${topList.length ? `<section class="card"><h2>ท็อปปิ้งที่ลูกค้าเพิ่ม</h2><div class="rank">${topList.map(t => `<div class="rk" style="grid-template-columns:1fr auto"><div><div class="nm">${esc(t.n)}</div><div class="bar"><i style="width:${t.qty / tmax * 100}%"></i></div></div><div class="v">${t.qty} ครั้ง<small>${B(t.rev)}</small></div></div>`).join('')}</div></section>` : ''}
+    ${memCard}
+    <section class="card"><h2>บิลล่าสุด</h2>${billHTML}</section>
+  </div></div>`;
+}
+
+/* ---------- render: stock ---------- */
+function viewStock() {
+  const al = stockAlerts();
+  const alHTML = al.length ? `<section class="card"><h2>ต้องดูตอนนี้</h2>${al.map(a => `<div class="alert"><span>${esc(a.p.name)}</span><span class="tag ${a.kind}">${a.text}</span></div>`).join('')}</section>` : '';
+  const rows = S.cfg.products.map(p => {
+    const margin = p.price - (p.cost || 0);
+    const exp = p.exp ? (() => { const [y, m, d] = parts(p.exp); return `หมดอายุ ${d} ${TH_M[m - 1]} ${y + 543}`; })() : 'ยังไม่ได้ใส่วันหมดอายุ';
+    return `<div class="sk">${thumb(p, p.name)}
+      <div><div class="nm">${esc(p.name)} ${p.active === false ? '<span class="tag ok">พักขาย</span>' : ''}</div>
+        <div class="mt">ขาย ${B(p.price)} ทุน ${B(p.cost)} <b>กำไร ${B(margin)}${p.price ? ' (' + Math.round(margin / p.price * 100) + '%)' : ''}</b></div>
+        <div class="mt">${exp}</div></div>
+      <div class="rt"><span class="step"><button data-act="stk" data-id="${p.id}" data-d="-1" aria-label="ลดสต็อก">−</button><span>${p.stock || 0}</span><button data-act="stk" data-id="${p.id}" data-d="1" aria-label="เพิ่มสต็อก">+</button></span>
+        <button class="linkbtn" data-act="editProd" data-id="${p.id}">แก้ไข</button></div></div>`;
+  }).join('');
+  return `${alHTML}<section class="card"><h2>สินค้าและสต็อก</h2>${rows || '<p class="empty">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>'}</section>
+    <div class="row2"><button class="btn line" data-act="editProd" data-id="">เพิ่มสินค้า</button><button class="btn line" data-act="bulk">กรอกหลายรายการ</button></div>`;
+}
+
+/* ---------- render: members ---------- */
+function memListHTML(q, act) {
+  q = (q || '').trim().toLowerCase();
+  const qd = q.replace(/\D/g, ''), L = S.cfg.loyalty;
+  const list = S.mem.filter(m => !q || String(m.name).toLowerCase().includes(q) || (qd && String(m.phone).includes(qd))).sort((a, b) => (b.pts || 0) - (a.pts || 0)).slice(0, 50);
+  if (!list.length) return `<p class="empty">${S.mem.length ? 'ไม่พบสมาชิกที่ค้นหา ลองพิมพ์เบอร์โทรหรือชื่ออีกแบบ' : 'ยังไม่มีสมาชิก กด “สมัครสมาชิก” เพื่อเพิ่มคนแรก'}</p>`;
+  return list.map(m => `<button class="mrow" data-act="${act}" data-id="${m.id}"><span><span class="nm">${esc(m.name)}</span><small>${esc(fmtPhone(m.phone))}${isBday(m) ? ' <span class="tag low">เดือนเกิด</span>' : ''}</small><span class="prog"><i style="width:${Math.min(100, (m.pts || 0) / L.need * 100)}%"></i></span></span><span class="pt">${m.pts || 0}<small>แต้ม</small></span></button>`).join('');
+}
+function viewMem() {
+  const L = S.cfg.loyalty, ready = S.mem.filter(m => (m.pts || 0) >= L.need).length;
+  return `<div class="kpis"><div class="kpi"><span>สมาชิกทั้งหมด</span><b>${S.mem.length} คน</b></div><div class="kpi"><span>แลกฟรีได้แล้ว</span><b>${ready} คน</b></div></div>
+  <section class="card"><h2>สมาชิก</h2><p class="read">ทุก ${B(L.per)} ได้ 1 แต้ม ครบ ${L.need} แต้มแลกฟรี 1 ชาม</p>
+    <label class="f"><input id="mq2" type="search" placeholder="ค้นหาด้วยเบอร์โทรหรือชื่อ" value="${esc(S.mq)}" aria-label="ค้นหาสมาชิก"></label>
+    <div id="mlist2">${memListHTML(S.mq, 'viewMem')}</div></section>
+  <button class="btn red" data-act="newMem">สมัครสมาชิก</button>`;
+}
+
+/* ---------- render: settings ---------- */
+function viewSet() {
+  const c = S.cfg;
+  const hasDemo = Object.values(S.days).some(d => (d.bills || []).some(b => b.demo));
+  return `<section class="card"><h2>ร้าน</h2>
+    <div class="setrow"><div class="tx"><b>${esc(c.shopName)}</b><small>พร้อมเพย์ ${c.promptpay ? esc(c.promptpay) : 'ยังไม่ได้ใส่ ใส่ก่อนถึงจะแสดง QR ได้'}</small><small>เตือนของใกล้หมดอายุล่วงหน้า ${c.expDays} วัน</small></div><button class="btn sm" data-act="editShop">แก้ไข</button></div></section>
+  <section class="card"><h2>ท็อปปิ้ง</h2>
+    <div class="setrow"><div class="tx"><small>${c.toppings.length ? esc(c.toppings.map(t => `${t.name} ${B(t.price)}`).join(', ')) : 'ยังไม่มีท็อปปิ้ง'}</small></div><button class="btn sm" data-act="editTops">แก้ไข</button></div></section>
+  <section class="card"><h2>ส่วนลดและโปรโมชัน</h2>
+    <div class="setrow"><div class="tx"><small>${c.promos.length ? esc(c.promos.map(promoLabel).join(', ')) : 'ยังไม่มีโปรโมชัน'}</small></div><button class="btn sm" data-act="editPromos">แก้ไข</button></div></section>
+  <section class="card"><h2>สมาชิกและแต้ม</h2>
+    <div class="setrow"><div class="tx"><small>ทุก ${B(c.loyalty.per)} ได้ 1 แต้ม ครบ ${c.loyalty.need} แต้มแลกฟรี 1 ชาม เดือนเกิดได้แต้ม x${c.loyalty.bday}</small></div><button class="btn sm" data-act="editLoy">แก้ไข</button></div></section>
+  <section class="card"><h2>ข้อมูล</h2>
+    ${dl ? '<div class="setrow"><div class="tx"><b>สำรองข้อมูลเป็น Excel</b><small>ไฟล์เดียวมีสินค้า ท็อปปิ้ง บิลทั้งหมด และสมาชิก</small></div><button class="btn sm" data-act="csv">สำรองข้อมูล</button></div>' : ''}
+    ${hasDemo ? '<div class="setrow"><div class="tx"><b>ข้อมูลตัวอย่าง</b><small>ยอดขายสมมติที่ใส่ไว้ให้ดูกราฟ ลบก่อนเริ่มขายจริง</small></div><button class="btn sm" data-act="askClearDemo">ลบข้อมูลตัวอย่าง</button></div>' : ''}
+    <div class="setrow"><div class="tx"><small>${S.mode === 'db' ? 'ข้อมูลเก็บในฐานข้อมูลของร้าน เปิดจากเครื่องไหนก็เห็นยอดเดียวกัน' : 'ตอนนี้เก็บข้อมูลไว้ชั่วคราวเท่านั้น'}</small></div>${sb ? '<button class="btn sm" data-act="logout">ออกจากระบบ</button>' : ''}</div></section>`;
+}
+
+/* ---------- sheets ---------- */
+function openSheet(s) { S.sheet = s; renderSheet(); }
+function closeSheet() { S.sheet = null; $('#sheetSlot').innerHTML = ''; }
+function shell(title, body) {
+  return `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="hd"><h2>${esc(title)}</h2><button class="x" data-act="close" aria-label="ปิด">×</button></div>${body}</div></div>`;
+}
+function renderSheet() {
+  const s = S.sheet; if (!s) return;
+  let html = '';
+  if (s.type === 'opt') {
+    const p = prod(s.id), unit = p.price + S.cfg.toppings.filter(t => s.tops.includes(t.id)).reduce((a, t) => a + t.price, 0);
+    const maxQ = (p.stock || 0) - inCart(p.id);
+    html = shell(p.name, `${imgOf(p) ? `<img class="opt-img" src="${imgOf(p)}" alt="">` : ''}
+      ${S.cfg.toppings.length ? `<div class="tops">${S.cfg.toppings.map(t => `<button data-act="top" data-id="${t.id}" aria-pressed="${s.tops.includes(t.id)}"><span>${esc(t.name)}</span><span>+${t.price}</span></button>`).join('')}</div>` : ''}
+      <div class="qtyrow"><span>จำนวน${maxQ <= 3 ? ` <span class="tag low">เหลือ ${maxQ}</span>` : ''}</span><span class="step"><button data-act="oq" data-d="-1" aria-label="ลด">−</button><span>${s.q}</span><button data-act="oq" data-d="1" aria-label="เพิ่ม">+</button></span></div>
+      <button class="btn red" data-act="addLine">เพิ่มลงบิล ${B(unit * s.q)}</button>`);
+  } else if (s.type === 'cart') {
+    html = shell('บิลนี้', cartHTML());
+  } else if (s.type === 'disc') {
+    html = shell('ส่วนลดกำหนดเอง', `<div class="row2"><label class="f">ลดเท่าไร<input id="dVal" type="number" inputmode="decimal" min="0" placeholder="0"></label>
+      <label class="f">หน่วย<select id="dType"><option value="baht">บาท</option><option value="pct">เปอร์เซ็นต์</option></select></label></div>
+      <button class="btn red" data-act="applyDisc">ใช้ส่วนลดนี้</button>`);
+  } else if (s.type === 'pay') {
+    const tot = cartTotal();
+    const seg = `<h3 class="h3s" style="margin-top:0">สมาชิก</h3>${memBlock()}<div class="chips" style="margin-top:14px"><button class="chip" data-act="payM" data-id="cash" aria-pressed="${s.m === 'cash'}">เงินสด</button><button class="chip" data-act="payM" data-id="qr" aria-pressed="${s.m === 'qr'}">พร้อมเพย์ QR</button></div>`;
+    if (s.m === 'cash') {
+      const q = [...new Set([20, 50, 100, 500, 1000].map(u => Math.ceil(tot / u) * u).filter(v => v > tot))].slice(0, 4);
+      html = shell(`รับเงิน ${B(tot)}`, `${seg}<label class="f">ลูกค้าจ่ายมา (บาท)<input id="recv" class="cashin" type="number" inputmode="numeric" min="0" value="${s.recv ?? ''}" placeholder="${tot}"></label>
+        <div class="quick"><button class="btn sm" data-act="quick" data-id="${tot}">จ่ายพอดี</button>${q.map(v => `<button class="btn sm" data-act="quick" data-id="${v}">${v.toLocaleString('en-US')}</button>`).join('')}</div>
+        <div class="change"><span id="chLabel">เงินทอน</span><b id="chVal">${B(0)}</b></div>
+        <button class="btn red" id="saveSale" data-act="commit">บันทึกการขาย</button>`);
+    } else {
+      const pp = S.cfg.promptpay;
+      const qr = pp ? qrSVG(ppPayload(pp, tot)) : '';
+      html = shell(`รับเงิน ${B(tot)}`, seg + (pp
+        ? (qr ? `<div class="qr">${qr}</div><p class="center">สแกนจ่ายพร้อมเพย์ ${esc(pp)}<br><b class="num" style="font-size:22px">${B(tot)}</b></p>`
+              : `<p class="note">สร้างรูป QR ไม่ได้ในตอนนี้ ให้ลูกค้าโอนเข้าพร้อมเพย์ ${esc(pp)} จำนวน ${B(tot)}</p>`)
+          + `<button class="btn red" data-act="commit">ลูกค้าโอนแล้ว บันทึกการขาย</button>`
+        : `<label class="f">เบอร์พร้อมเพย์หรือเลขบัตรประชาชนของร้าน<input id="ppNew" inputmode="numeric" placeholder="08xxxxxxxx"></label><button class="btn red" data-act="setPP">บันทึกแล้วแสดง QR</button>`));
+    }
+  } else if (s.type === 'prod') {
+    const p = s.id ? prod(s.id) : { name: '', cat: '', price: '', cost: '', stock: 0, low: 5, exp: '', active: true };
+    const cats = [...new Set(S.cfg.products.map(x => x.cat).filter(Boolean))];
+    html = shell(s.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า', `<div id="pImgBox">${photoBlock(s)}</div><label class="f">ชื่อสินค้า<input id="pName" value="${esc(p.name)}"></label>
+      <label class="f">หมวด<input id="pCat" list="catList" value="${esc(p.cat || '')}"><datalist id="catList">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+      <div class="row2"><label class="f">ราคาขายต่อชาม<input id="pPrice" type="number" inputmode="decimal" min="0" value="${p.price}"></label><label class="f">ต้นทุนต่อชาม<input id="pCost" type="number" inputmode="decimal" min="0" value="${p.cost}"></label></div>
+      <div class="row2"><label class="f">สต็อก (ซอง)<input id="pStock" type="number" inputmode="numeric" min="0" value="${p.stock || 0}"></label><label class="f">เตือนเมื่อเหลือ<input id="pLow" type="number" inputmode="numeric" min="0" value="${p.low ?? 5}"></label></div>
+      <label class="f">วันหมดอายุของล็อตที่ใกล้สุด<input id="pExp" type="date" value="${esc(p.exp || '')}"></label>
+      <label class="f">สถานะ<select id="pActive"><option value="1" ${p.active !== false ? 'selected' : ''}>ขายอยู่</option><option value="0" ${p.active === false ? 'selected' : ''}>พักขาย</option></select></label>
+      <button class="btn red" data-act="saveProd">บันทึกสินค้า</button>${s.id ? '<p class="center"><button class="linkbtn" data-act="delProd">ลบสินค้านี้</button></p>' : ''}`);
+  } else if (s.type === 'tops') {
+    html = shell('ท็อปปิ้ง', `<div class="erow ehead"><span>ชื่อ</span><span>ราคา</span><span>ต้นทุน</span><span></span></div><div id="rows">${s.rows.map(topRow).join('')}</div>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มท็อปปิ้ง</button><button class="btn red" data-act="saveTops">บันทึกท็อปปิ้ง</button>`);
+  } else if (s.type === 'promos') {
+    html = shell('ส่วนลดและโปรโมชัน', `<div class="erow ehead"><span>ชื่อโปร</span><span>ลด</span><span>หน่วย</span><span></span></div><div id="rows">${s.rows.map(promoRow).join('')}</div>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มโปรโมชัน</button><button class="btn red" data-act="savePromos">บันทึกโปรโมชัน</button>`);
+  } else if (s.type === 'shop') {
+    html = shell('ข้อมูลร้าน', `<label class="f">ชื่อร้าน<input id="sName" value="${esc(S.cfg.shopName)}"></label>
+      <label class="f">เบอร์พร้อมเพย์หรือเลขบัตรประชาชน<input id="sPP" inputmode="numeric" value="${esc(S.cfg.promptpay)}" placeholder="08xxxxxxxx"></label>
+      <label class="f">เตือนของใกล้หมดอายุล่วงหน้า (วัน)<input id="sExp" type="number" inputmode="numeric" min="1" value="${S.cfg.expDays}"></label>
+      <button class="btn red" data-act="saveShop">บันทึกข้อมูลร้าน</button>`);
+  } else if (s.type === 'mem') {
+    html = shell('เลือกสมาชิก', `<label class="f">เบอร์โทรหรือชื่อ<input id="mq" type="search" inputmode="tel" placeholder="08xxxxxxxx" value="${esc(s.q || '')}"></label>
+      <div id="mlist">${memListHTML(s.q, 'chooseMem')}</div><button class="btn line" data-act="newMem" data-from="cart" style="margin-top:12px">สมัครสมาชิกใหม่</button>`);
+  } else if (s.type === 'memEdit') {
+    const m = s.id ? member(s.id) : { name: '', phone: s.phone || '', bm: '', pts: 0 };
+    html = shell(s.id ? 'แก้ไขสมาชิก' : 'สมัครสมาชิก', `<label class="f">ชื่อหรือชื่อเล่น<input id="mName" value="${esc(m.name)}"></label>
+      <label class="f">เบอร์โทร<input id="mPhone" inputmode="tel" value="${esc(m.phone)}" placeholder="08xxxxxxxx"></label>
+      <label class="f">เดือนเกิด<select id="mBm"><option value="">ไม่ระบุ</option>${TH_MF.map((t, i) => `<option value="${i + 1}" ${+m.bm === i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      ${s.id ? `<label class="f">แต้มสะสม แก้ได้เมื่อต้องปรับแต้มด้วยมือ<input id="mPts" type="number" inputmode="numeric" min="0" value="${m.pts || 0}"></label>` : ''}
+      <button class="btn red" data-act="saveMem">บันทึกสมาชิก</button>${s.id ? '<p class="center"><button class="linkbtn" data-act="askDelMem">ลบสมาชิกนี้</button></p>' : ''}`);
+  } else if (s.type === 'memView') {
+    const m = member(s.id), L = S.cfg.loyalty;
+    if (!m) { closeSheet(); return; }
+    const hist = Object.keys(S.days).flatMap(k => (S.days[k].bills || []).filter(b => b.m === m.id && !b.void).map(b => ({ ...b, day: k }))).sort((a, b) => a.t < b.t ? 1 : -1);
+    const cnt = {}; hist.forEach(b => b.items.forEach(l => cnt[l.n] = (cnt[l.n] || 0) + l.q));
+    const fav = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0], pts = m.pts || 0;
+    html = shell(m.name, `<p class="read">${esc(fmtPhone(m.phone))}${m.bm ? ' เกิดเดือน' + TH_MF[m.bm - 1] : ''}</p>
+      <div class="stats"><div><span>แต้มสะสม</span><b>${pts}</b></div><div><span>ยอดซื้อรวม</span><b>${B(m.spent)}</b></div><div><span>มาแล้ว</span><b>${m.visits || 0} ครั้ง</b></div></div>
+      <span class="prog"><i style="width:${Math.min(100, pts / L.need * 100)}%"></i></span>
+      <p class="read" style="margin-top:8px">${pts >= L.need ? 'แลกฟรี 1 ชามได้แล้ว' : `อีก ${L.need - pts} แต้ม แลกฟรี 1 ชาม`}${fav ? ` ชอบสั่ง${esc(fav)}` : ''}</p>
+      <h3 class="h3s">ประวัติการซื้อตั้งแต่ต้นเดือนก่อน</h3>
+      ${hist.length ? hist.slice(0, 20).map(b => `<div class="bill"><div class="tx"><b>${fmtDay(b.day)} ${new Date(b.t).toTimeString().slice(0, 5)}</b><small>${esc(b.items.map(l => l.n + (l.q > 1 ? ' ×' + l.q : '')).join(', '))}</small></div><div class="am">${B(b.total)}<br><span class="tag ok">${b.red ? 'ใช้ ' + b.red + ' แต้ม ' : ''}+${b.earn || 0} แต้ม</span></div></div>`).join('') : '<p class="empty">ยังไม่มีบิลในช่วงนี้</p>'}
+      <button class="btn" data-act="editMem" data-id="${m.id}" style="margin-top:12px">แก้ไขสมาชิก</button>`);
+  } else if (s.type === 'loy') {
+    const L = S.cfg.loyalty;
+    html = shell('สมาชิกและแต้ม', `<label class="f">ซื้อครบกี่บาทได้ 1 แต้ม<input id="lPer" type="number" inputmode="numeric" min="1" value="${L.per}"></label>
+      <label class="f">กี่แต้มแลกฟรี 1 ชาม<input id="lNeed" type="number" inputmode="numeric" min="1" value="${L.need}"></label>
+      <label class="f">ตัวคูณแต้มในเดือนเกิด ใส่ 1 ถ้าไม่ให้โบนัส<input id="lBday" type="number" inputmode="numeric" min="1" value="${L.bday}"></label>
+      <button class="btn red" data-act="saveLoy">บันทึกกติกาแต้ม</button>`);
+  } else if (s.type === 'bulk') {
+    html = shell('กรอกสินค้าหลายรายการ', `<p class="read" style="margin-top:0">แก้ได้ทุกช่อง แถวที่ลบจะถูกลบจากร้านเมื่อกดบันทึก</p>
+      <div class="erow e5 ehead"><span>ชื่อสินค้า</span><span>ราคาขาย</span><span>ต้นทุน</span><span>สต็อก</span><span></span></div><div id="rows">${s.rows.map(bulkRow).join('')}</div>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มแถว</button><button class="btn red" data-act="saveBulk">บันทึกสินค้าทั้งหมด</button>`);
+  } else if (s.type === 'confirm') {
+    html = shell(s.title, `<p>${esc(s.text)}</p><div class="row2"><button class="btn" data-act="close">ไม่ทำ</button><button class="btn red" data-act="${s.act}">${esc(s.yes)}</button></div>`);
+  }
+  $('#sheetSlot').innerHTML = html;
+  if (s.type === 'pay' && s.m === 'cash') updateChange();
+}
+function photoBlock(s) {
+  const src = s.img !== undefined ? s.img : (s.id ? imgOf(prod(s.id)) : '');
+  return `<div class="pimg"><div class="pprev">${src ? `<img src="${src}" alt="รูปสินค้า">` : 'ยังไม่มีรูป'}</div>
+    <div class="pacts"><label class="btn sm line" for="pImg">${src ? 'เปลี่ยนรูป' : 'เลือกรูป'}</label><input id="pImg" type="file" accept="image/*" hidden>
+    ${src ? '<button class="linkbtn" data-act="rmImg" style="padding-left:0">ลบรูป</button>' : ''}<small>ถ่ายหรือเลือกรูปซองสินค้า ระบบย่อรูปให้เอง</small></div></div>`;
+}
+function shrinkImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => {
+      const Wd = 400, Ht = 320, c = document.createElement('canvas'); c.width = Wd; c.height = Ht;
+      const r = Math.max(Wd / im.naturalWidth, Ht / im.naturalHeight), w = im.naturalWidth * r, h = im.naturalHeight * r, g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, Wd, Ht); g.drawImage(im, (Wd - w) / 2, (Ht - h) / 2, w, h);
+      URL.revokeObjectURL(url);
+      let d = c.toDataURL('image/jpeg', 0.78); if (d.length > 180000) d = c.toDataURL('image/jpeg', 0.6);
+      res(d);
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode')); };
+    im.src = url;
+  });
+}
+const topRow = t => `<div class="erow"><input class="in" data-k="name" value="${esc(t.name || '')}" placeholder="เช่น ไข่ต้ม" data-rid="${esc(t.id || '')}"><input class="in" data-k="price" type="number" inputmode="decimal" value="${t.price ?? ''}"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${t.cost ?? ''}"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
+const bulkRow = p => `<div class="erow e5"><input class="in" data-k="name" value="${esc(p.name || '')}" placeholder="ชื่อสินค้า" data-rid="${esc(p.id || '')}" aria-label="ชื่อสินค้า"><input class="in" data-k="price" type="number" inputmode="decimal" value="${p.price ?? ''}" aria-label="ราคาขาย"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${p.cost ?? ''}" aria-label="ต้นทุน"><input class="in" data-k="stock" type="number" inputmode="numeric" value="${p.stock ?? ''}" aria-label="สต็อก"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
+const promoRow = p => `<div class="erow"><input class="in" data-k="name" value="${esc(p.name || '')}" placeholder="เช่น ลดนักเรียน" data-rid="${esc(p.id || '')}"><input class="in" data-k="val" type="number" inputmode="decimal" value="${p.val ?? ''}"><select class="in" data-k="type"><option value="pct" ${p.type !== 'baht' ? 'selected' : ''}>%</option><option value="baht" ${p.type === 'baht' ? 'selected' : ''}>บาท</option></select><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`;
+function readRows() {
+  return [...document.querySelectorAll('#rows .erow')].map(r => {
+    const o = { id: r.querySelector('[data-rid]').dataset.rid };
+    r.querySelectorAll('[data-k]').forEach(el => o[el.dataset.k] = el.value);
+    return o;
+  });
+}
+function updateChange() {
+  const el = $('#recv'); if (!el) return;
+  const tot = cartTotal(), v = N(el.value), short = v < tot;
+  $('#chLabel').textContent = el.value === '' ? 'เงินทอน' : short ? 'ยังขาดอีก' : 'เงินทอน';
+  $('#chVal').textContent = B(el.value === '' ? 0 : Math.abs(v - tot));
+  $('#saveSale').disabled = el.value !== '' && short;
+}
+function toast(msg) {
+  clearTimeout(toastTimer);
+  $('#toastSlot').innerHTML = `<div class="toast">${esc(msg)}</div>`;
+  toastTimer = setTimeout(() => $('#toastSlot').innerHTML = '', 3200);
+}
+
+/* ---------- PromptPay QR ---------- */
+const tlv = (id, v) => id + pad(v.length) + v;
+function crc16(s) {
+  let c = 0xFFFF;
+  for (let i = 0; i < s.length; i++) { c ^= s.charCodeAt(i) << 8; for (let j = 0; j < 8; j++) c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xFFFF : (c << 1) & 0xFFFF; }
+  return c.toString(16).toUpperCase().padStart(4, '0');
+}
+function ppPayload(target, amount) {
+  const t = String(target).replace(/\D/g, '');
+  const acc = t.length >= 15 ? tlv('03', t) : t.length >= 13 ? tlv('02', t) : tlv('01', '0066' + t.replace(/^0/, ''));
+  const s = tlv('00', '01') + tlv('01', amount ? '12' : '11') + tlv('29', tlv('00', 'A000000677010111') + acc) + tlv('58', 'TH') + tlv('53', '764') + (amount ? tlv('54', amount.toFixed(2)) : '') + '6304';
+  return s + crc16(s);
+}
+function qrSVG(text) {
+  try {
+    if (typeof qrcode !== 'function') return '';
+    const q = qrcode(0, 'M'); q.addData(text); q.make();
+    const n = q.getModuleCount(); let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+    return `<svg viewBox="-1 -1 ${n + 2} ${n + 2}" role="img" aria-label="QR พร้อมเพย์" shape-rendering="crispEdges"><path d="${d}" fill="#000"/></svg>`;
+  } catch (e) { return ''; }
+}
+
+/* ---------- actions ---------- */
+function commitSale() {
+  const s = S.sheet, tot = cartTotal();
+  if (!S.cart.length) return;
+  let recv = tot;
+  if (s.m === 'cash') { const el = $('#recv'); recv = el && el.value !== '' ? N(el.value) : tot; if (recv < tot) return; }
+  const k = today(), day = S.days[k] || (S.days[k] = { date: k, bills: [] });
+  const items = S.cart.map(l => ({ p: l.p, n: l.n, q: l.q, price: l.price, cost: l.cost || 0, tops: l.tops.map(t => ({ id: t.id, n: t.n, price: t.price, cost: t.cost || 0 })) }));
+  const bill = { id: uid('b'), t: new Date().toISOString(), items, sub: cartSub(), disc: cartDisc(), dl: cartDisc() ? S.disc.label : '', total: tot,
+    cost: S.cart.reduce((a, l) => a + unitCost(l) * l.q, 0), pay: s.m, recv };
+  const mb = curMem(), free = cartFree(), earn = earnPts(tot, mb);
+  if (mb) {
+    Object.assign(bill, { m: mb.id, mn: mb.name, earn, red: free ? S.cfg.loyalty.need : 0, free });
+    mb.pts = Math.max(0, (mb.pts || 0) + earn - bill.red); mb.spent = (mb.spent || 0) + tot; mb.visits = (mb.visits || 0) + 1; mb.last = k;
+    saveMem();
+  }
+  day.bills.push(bill);
+  items.forEach(l => { const p = prod(l.p); if (p) p.stock = Math.max(0, (p.stock || 0) - l.q); });
+  saveDay(k); saveCfg();
+  S.cart = []; S.disc = { type: 'none' }; S.sel = null; S.cm = null; S.redeem = false;
+  closeSheet(); render();
+  toast((s.m === 'cash' && recv > tot ? `บันทึกการขายแล้ว ทอน ${B(recv - tot)}` : 'บันทึกการขายแล้ว') + (mb ? ` ${mb.name} ได้ +${earn} แต้ม รวม ${mb.pts} แต้ม` : ''));
+}
+function voidBill(dayK, id) {
+  const d = S.days[dayK], b = d && d.bills.find(x => x.id === id);
+  if (!b || b.void) return;
+  b.void = true;
+  const mb = b.m && member(b.m);
+  if (mb) { mb.pts = Math.max(0, (mb.pts || 0) - (b.earn || 0) + (b.red || 0)); mb.spent = Math.max(0, (mb.spent || 0) - b.total); mb.visits = Math.max(0, (mb.visits || 0) - 1); saveMem(); }
+  b.items.forEach(l => { const p = prod(l.p); if (p) p.stock = (p.stock || 0) + l.q; });
+  saveDay(dayK); saveCfg(); closeSheet(); render(); toast('ยกเลิกบิลแล้ว คืนสต็อกให้แล้ว');
+}
+function clearDemo() {
+  Object.keys(S.days).forEach(k => {
+    const d = S.days[k]; if (!d.bills.some(b => b.demo)) return;
+    d.bills = d.bills.filter(b => !b.demo); saveDay(k);
+  });
+  S.sel = null; closeSheet(); render(); toast('ลบข้อมูลตัวอย่างแล้ว');
+}
+async function exportCSV() {
+  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const rows = [['วันที่', 'เวลา', 'รายการ', 'ยอดก่อนลด', 'ส่วนลด', 'ยอดรับ', 'ต้นทุน', 'กำไร', 'ช่องทาง', 'สถานะ']];
+  Object.keys(S.days).sort().forEach(k => S.days[k].bills.forEach(b => rows.push([k, new Date(b.t).toTimeString().slice(0, 5),
+    b.items.map(l => `${l.n}${l.tops.length ? ' (' + l.tops.map(t => t.n).join('+') + ')' : ''} x${l.q}`).join('; '),
+    b.sub, b.disc || 0, b.total, b.cost || 0, b.total - (b.cost || 0), b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์', b.void ? 'ยกเลิก' : b.demo ? 'ตัวอย่าง' : 'ขายแล้ว'])));
+  if (rows.length === 1) return toast('ยังไม่มีบิลให้ส่งออก');
+  try { await dl.save({ filename: `ยอดขาย-${today()}.csv`, data: '\ufeff' + rows.map(r => r.map(q).join(',')).join('\r\n') }); }
+  catch (e) { if (e && e.code !== 'declined') toast('ส่งออกไม่สำเร็จ ลองใหม่อีกครั้ง'); }
+}
+
+async function exportBackup() {
+  if (typeof XLSX === 'undefined') return exportCSV();
+  let days = S.days;
+  if (db) { try { const snap = await db.collection('days').limit(1000).get(); const all = {}; snap.docs.forEach(d => all[d.id] = d.data()); Object.keys(S.days).forEach(k => all[k] = S.days[k]); days = all; } catch (e) {} }
+  const prods = [['ชื่อสินค้า', 'หมวด', 'ราคาขาย', 'ต้นทุน', 'กำไรต่อชาม', 'สต็อก', 'เตือนเมื่อเหลือ', 'วันหมดอายุ', 'สถานะ']]
+    .concat(S.cfg.products.map(p => [p.name, p.cat || '', p.price, p.cost || 0, p.price - (p.cost || 0), p.stock || 0, p.low ?? 5, p.exp || '', p.active === false ? 'พักขาย' : 'ขายอยู่']));
+  const tops = [['ท็อปปิ้ง', 'ราคา', 'ต้นทุน']].concat(S.cfg.toppings.map(t => [t.name, t.price, t.cost || 0]));
+  const bills = [['วันที่', 'เวลา', 'รายการ', 'ยอดก่อนลด', 'ส่วนลด', 'แลกแต้ม', 'ยอดรับ', 'ต้นทุน', 'กำไร', 'ช่องทาง', 'สมาชิก', 'แต้มที่ได้', 'แต้มที่ใช้', 'สถานะ']];
+  Object.keys(days).sort().forEach(k => (days[k].bills || []).forEach(b => bills.push([k, new Date(b.t).toTimeString().slice(0, 5),
+    b.items.map(l => `${l.n}${l.tops && l.tops.length ? ' (' + l.tops.map(t => t.n).join('+') + ')' : ''} x${l.q}`).join('; '),
+    b.sub, b.disc || 0, b.free || 0, b.total, b.cost || 0, b.total - (b.cost || 0), b.pay === 'cash' ? 'เงินสด' : 'พร้อมเพย์', b.mn || '', b.earn || 0, b.red || 0, b.void ? 'ยกเลิก' : b.demo ? 'ตัวอย่าง' : 'ขายแล้ว'])));
+  const mems = [['ชื่อ', 'เบอร์โทร', 'เดือนเกิด', 'แต้มสะสม', 'ยอดซื้อรวม', 'จำนวนครั้ง', 'มาล่าสุด']]
+    .concat(S.mem.map(m => [m.name, String(m.phone), m.bm ? TH_MF[m.bm - 1] : '', m.pts || 0, m.spent || 0, m.visits || 0, m.last || '']));
+  try {
+    const wb = XLSX.utils.book_new();
+    [['สินค้า', prods], ['ท็อปปิ้ง', tops], ['บิล', bills], ['สมาชิก', mems]].forEach(([n, a]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), n));
+    await dl.save({ filename: `สำรองข้อมูลร้าน-${today()}.xlsx`, data: XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) });
+  } catch (e) { if (!e || e.code !== 'declined') toast('สำรองข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง'); }
+}
+function backToCart() { closeSheet(); render(); if (S.cart.length && window.matchMedia('(max-width:959px)').matches) openSheet({ type: 'cart' }); }
+
+const RO_BLOCK = new Set(['pick', 'editProd', 'bulk', 'stk', 'newMem', 'editMem', 'editTops', 'editPromos', 'editShop', 'editLoy', 'askVoid', 'askClearDemo', 'commit', 'saveProd', 'delProd', 'saveBulk', 'saveMem', 'doDelMem', 'saveTops', 'savePromos', 'saveShop', 'saveLoy', 'doVoid', 'doClearDemo', 'setPP']);
+const ACT = {
+  pickMem: () => openSheet({ type: 'mem', q: '' }),
+  chooseMem: el => { keepRecv(); S.cm = el.dataset.id; S.redeem = false; if (S.sheet && S.sheet.type === 'mem') backToCart(); else { render(); renderSheet(); } },
+  dropMem: () => { keepRecv(); S.cm = null; S.redeem = false; render(); renderSheet(); },
+  redeem: () => { keepRecv(); S.redeem = !S.redeem; render(); renderSheet(); },
+  newMem: el => { keepRecv(); const q = $('#mq'), cur = S.sheet; openSheet({ type: 'memEdit', id: '', from: el.dataset.from || (el.dataset.phone != null ? 'cart' : ''), ret: cur && cur.type === 'pay' ? cur : null, phone: el.dataset.phone || (q ? q.value.replace(/\D/g, '') : '') }); },
+  viewMem: el => openSheet({ type: 'memView', id: el.dataset.id }),
+  editMem: el => openSheet({ type: 'memEdit', id: el.dataset.id }),
+  saveMem: () => {
+    const s = S.sheet, name = $('#mName').value.trim(), phone = $('#mPhone').value.replace(/\D/g, '');
+    if (!name) return toast('ใส่ชื่อสมาชิกก่อน');
+    if (phone.length < 9) return toast('ใส่เบอร์โทรให้ครบ');
+    if (S.mem.some(m => m.phone === phone && m.id !== s.id)) return toast('เบอร์นี้เป็นสมาชิกอยู่แล้ว');
+    const v = { name, phone, bm: N($('#mBm').value) || '' };
+    let id = s.id;
+    if (id) { Object.assign(member(id), v, { pts: Math.max(0, Math.round(N($('#mPts').value))) }); }
+    else { id = uid('m'); S.mem.push({ id, pts: 0, spent: 0, visits: 0, joined: today(), last: '', ...v }); }
+    saveMem();
+    if (s.ret) { S.cm = id; S.redeem = false; render(); openSheet(s.ret); }
+    else if (s.from === 'cart') { S.cm = id; S.redeem = false; backToCart(); } else { closeSheet(); render(); }
+    toast('บันทึกสมาชิกแล้ว');
+  },
+  askDelMem: () => openSheet({ type: 'confirm', title: 'ลบสมาชิกนี้', text: 'แต้มสะสมของสมาชิกจะหายไป บิลเก่ายังอยู่ในสรุปยอดเหมือนเดิม', yes: 'ลบสมาชิก', act: 'doDelMem', id: S.sheet.id }),
+  doDelMem: () => { const id = S.sheet.id; S.mem = S.mem.filter(m => m.id !== id); if (S.cm === id) { S.cm = null; S.redeem = false; } saveMem(); closeSheet(); render(); toast('ลบสมาชิกแล้ว'); },
+  editLoy: () => openSheet({ type: 'loy' }),
+  saveLoy: () => { S.cfg.loyalty = { per: Math.max(1, Math.round(N($('#lPer').value)) || 60), need: Math.max(1, Math.round(N($('#lNeed').value)) || 10), bday: Math.max(1, Math.round(N($('#lBday').value)) || 1) }; saveCfg(); closeSheet(); render(); toast('บันทึกกติกาแต้มแล้ว'); },
+  bulk: () => openSheet({ type: 'bulk', rows: S.cfg.products.map(p => ({ id: p.id, name: p.name, price: p.price, cost: p.cost, stock: p.stock })) }),
+  saveBulk: () => {
+    const old = S.cfg.products;
+    S.cfg.products = readRows().filter(r => r.name.trim()).map(r => {
+      const p = r.id && old.find(x => x.id === r.id), v = { name: r.name.trim(), price: N(r.price), cost: N(r.cost), stock: Math.max(0, Math.round(N(r.stock))) };
+      return p ? Object.assign(p, v) : { id: uid('p'), img: '', cat: '', low: 5, exp: '', active: true, ...v };
+    });
+    S.cart = S.cart.filter(l => prod(l.p));
+    old.filter(p => !S.cfg.products.includes(p)).forEach(p => { if (S.imgs[p.id]) { delete S.imgs[p.id]; saveImg(p.id); } });
+    saveCfg(); closeSheet(); render(); toast('บันทึกสินค้าแล้ว');
+  },
+  tab: el => { S.tab = el.dataset.id; S.sel = null; render(); window.scrollTo(0, 0); },
+  cat: el => { S.cat = el.dataset.id; render(); },
+  pick: el => openSheet({ type: 'opt', id: el.dataset.id, tops: [], q: 1 }),
+  top: el => { const s = S.sheet, id = el.dataset.id; s.tops = s.tops.includes(id) ? s.tops.filter(x => x !== id) : [...s.tops, id]; renderSheet(); },
+  oq: el => { const s = S.sheet, p = prod(s.id); s.q = Math.min(Math.max(1, s.q + N(el.dataset.d)), Math.max(1, (p.stock || 0) - inCart(p.id))); renderSheet(); },
+  addLine: () => {
+    const s = S.sheet, p = prod(s.id);
+    const tops = S.cfg.toppings.filter(t => s.tops.includes(t.id)).map(t => ({ id: t.id, n: t.name, price: N(t.price), cost: N(t.cost) }));
+    const key = tops.map(t => t.id).join('|');
+    const same = S.cart.find(l => l.p === p.id && l.tops.map(t => t.id).join('|') === key);
+    if (same) same.q += s.q; else S.cart.push({ p: p.id, n: p.name, price: N(p.price), cost: N(p.cost), q: s.q, tops });
+    closeSheet(); render();
+  },
+  openCart: () => openSheet({ type: 'cart' }),
+  lq: el => {
+    const i = N(el.dataset.id), l = S.cart[i], d = N(el.dataset.d), p = prod(l.p);
+    if (d > 0 && p && inCart(l.p) >= (p.stock || 0)) return toast(`${p.name} เหลือ ${p.stock} ซอง`);
+    l.q += d; if (l.q <= 0) S.cart.splice(i, 1);
+    if (!S.cart.length) { S.disc = { type: 'none' }; if (S.sheet && S.sheet.type === 'cart') closeSheet(); }
+    render(); renderSheet();
+  },
+  disc: el => {
+    const id = el.dataset.id, p = S.cfg.promos.find(x => x.id === id);
+    S.disc = p ? { type: p.type, val: N(p.val), id: p.id, label: promoLabel(p) } : { type: 'none' };
+    render(); renderSheet();
+  },
+  discCustom: () => openSheet({ type: 'disc' }),
+  applyDisc: () => {
+    const v = N($('#dVal').value), t = $('#dType').value;
+    S.disc = v > 0 ? { type: t, val: t === 'pct' ? Math.min(100, v) : v, id: 'custom', label: t === 'pct' ? `ลด ${Math.min(100, v)}%` : `ลด ฿${v}` } : { type: 'none' };
+    closeSheet(); render(); if (window.matchMedia('(max-width:959px)').matches) openSheet({ type: 'cart' });
+  },
+  clearCart: () => { S.cart = []; S.disc = { type: 'none' }; S.cm = null; S.redeem = false; closeSheet(); render(); },
+  pay: el => openSheet({ type: 'pay', m: el.dataset.id }),
+  payM: el => { const r = $('#recv'); if (r) S.sheet.recv = r.value; S.sheet.m = el.dataset.id; renderSheet(); },
+  quick: el => { $('#recv').value = el.dataset.id; updateChange(); },
+  commit: commitSale,
+  setPP: () => { const v = $('#ppNew').value.replace(/\D/g, ''); if (v.length < 10) return toast('ใส่เบอร์ 10 หลัก หรือเลขบัตร 13 หลัก'); S.cfg.promptpay = v; saveCfg(); renderSheet(); },
+  range: el => { S.range = el.dataset.id; S.sel = null; render(); },
+  bar: el => { S.sel = N(el.dataset.id); render(); },
+  rankBy: el => { S.rankBy = el.dataset.id; render(); },
+  askVoid: el => openSheet({ type: 'confirm', title: 'ยกเลิกบิลนี้', text: 'ยอดของบิลจะไม่ถูกนับในสรุป และสต็อกจะถูกคืน', yes: 'ยกเลิกบิล', act: 'doVoid', id: el.dataset.id, day: el.dataset.day }),
+  doVoid: () => voidBill(S.sheet.day, S.sheet.id),
+  askClearDemo: () => openSheet({ type: 'confirm', title: 'ลบข้อมูลตัวอย่าง', text: 'บิลสมมติทั้งหมดจะถูกลบ บิลที่ขายจริงยังอยู่ครบ', yes: 'ลบข้อมูลตัวอย่าง', act: 'doClearDemo' }),
+  doClearDemo: clearDemo,
+  stk: el => { const p = prod(el.dataset.id); p.stock = Math.max(0, (p.stock || 0) + N(el.dataset.d)); saveCfg(); render(); },
+  editProd: el => openSheet({ type: 'prod', id: el.dataset.id }),
+  saveProd: () => {
+    const s = S.sheet, name = $('#pName').value.trim();
+    if (!name) return toast('ใส่ชื่อสินค้าก่อน');
+    const v = { name, cat: $('#pCat').value.trim(), price: N($('#pPrice').value), cost: N($('#pCost').value), stock: Math.max(0, Math.round(N($('#pStock').value))), low: Math.max(0, Math.round(N($('#pLow').value))), exp: $('#pExp').value, active: $('#pActive').value === '1' };
+    let id = s.id;
+    if (id) Object.assign(prod(id), v); else { id = uid('p'); S.cfg.products.push({ id, img: '', ...v }); }
+    if (s.img !== undefined) { if (s.img) S.imgs[id] = s.img; else { delete S.imgs[id]; prod(id).img = ''; } saveImg(id); }
+    saveCfg(); closeSheet(); render(); toast('บันทึกสินค้าแล้ว');
+  },
+  delProd: () => { const id = S.sheet.id; if (S.imgs[id]) { delete S.imgs[id]; saveImg(id); } S.cfg.products = S.cfg.products.filter(p => p.id !== id); S.cart = S.cart.filter(l => l.p !== id); saveCfg(); closeSheet(); render(); toast('ลบสินค้าแล้ว'); },
+  editTops: () => openSheet({ type: 'tops', rows: clone(S.cfg.toppings) }),
+  editPromos: () => openSheet({ type: 'promos', rows: clone(S.cfg.promos) }),
+  addRow: () => { S.sheet.rows = readRows().concat({}); renderSheet(); },
+  rmRow: el => { const rows = readRows(), i = [...document.querySelectorAll('#rows .erow')].indexOf(el.closest('.erow')); rows.splice(i, 1); S.sheet.rows = rows; renderSheet(); },
+  saveTops: () => { S.cfg.toppings = readRows().filter(r => r.name.trim()).map(r => ({ id: r.id || uid('t'), name: r.name.trim(), price: N(r.price), cost: N(r.cost) })); saveCfg(); closeSheet(); render(); toast('บันทึกท็อปปิ้งแล้ว'); },
+  savePromos: () => { S.cfg.promos = readRows().filter(r => N(r.val) > 0).map(r => ({ id: r.id || uid('d'), name: r.name.trim(), type: r.type, val: r.type === 'pct' ? Math.min(100, N(r.val)) : N(r.val) })); saveCfg(); closeSheet(); render(); toast('บันทึกโปรโมชันแล้ว'); },
+  editShop: () => openSheet({ type: 'shop' }),
+  saveShop: () => { S.cfg.shopName = $('#sName').value.trim() || 'ร้านรามยอน'; S.cfg.promptpay = $('#sPP').value.replace(/\D/g, ''); S.cfg.expDays = Math.max(1, Math.round(N($('#sExp').value)) || 30); saveCfg(); closeSheet(); render(); toast('บันทึกข้อมูลร้านแล้ว'); },
+  csv: exportBackup,
+  logout: async () => { try { await sb.auth.signOut(); } catch (e) {} location.reload(); },
+  rmImg: () => { S.sheet.img = ''; $('#pImgBox').innerHTML = photoBlock(S.sheet); },
+  close: closeSheet,
+  scrim: (el, e) => { if (e.target === el) closeSheet(); }
+};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  if (el.dataset.act === 'scrim' && e.target !== el) return;
+  if (S.ro && RO_BLOCK.has(el.dataset.act)) { closeSheet(); render(); toast('บัญชีนี้ดูได้อย่างเดียว บันทึกข้อมูลไม่ได้'); return; }
+  const f = ACT[el.dataset.act]; if (f) f(el, e);
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'recv') updateChange();
+  else if (t.classList.contains('mqi')) t.parentNode.querySelector('.mres').innerHTML = memFind(t.value);
+  else if (t.id === 'mq' && S.sheet) { S.sheet.q = t.value; $('#mlist').innerHTML = memListHTML(t.value, 'chooseMem'); }
+  else if (t.id === 'mq2') { S.mq = t.value; $('#mlist2').innerHTML = memListHTML(S.mq, 'viewMem'); }
+});
+document.addEventListener('change', async e => {
+  const t = e.target;
+  if (t.id !== 'pImg' || !t.files || !t.files[0] || !S.sheet || S.sheet.type !== 'prod') return;
+  const sh = S.sheet;
+  try { const d = await shrinkImage(t.files[0]); if (S.sheet !== sh) return; sh.img = d; $('#pImgBox').innerHTML = photoBlock(sh); }
+  catch (err) { toast('เปิดรูปนี้ไม่ได้ ลองเลือกรูปแบบ JPG หรือ PNG'); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheet) closeSheet(); });
+window.addEventListener('beforeunload', e => { if (Object.values(W).some(x => x.busy)) { e.preventDefault(); e.returnValue = ''; } });
+init();
+</script>
+</body>
+</html>
