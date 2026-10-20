@@ -204,6 +204,10 @@ label.f input,label.f select,.in{display:block;width:100%;margin-top:4px;padding
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;font-size:15px;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
 
 .mfind .in{margin-top:0}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--sunk);padding:5px;border-radius:16px;margin-bottom:12px}
+.seg button{min-height:48px;border-radius:12px;font-family:var(--display);font-size:18px;text-align:center;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.seg b{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;background:var(--red);color:var(--on-red);font-size:14px;font-weight:500;margin-left:6px;vertical-align:middle}
 .due{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
 .due:last-child{border-bottom:0}
 .due .tx{flex:1;min-width:0}
@@ -307,7 +311,7 @@ const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(
 const S = {
   ready: false, mode: 'loading', cfg: null, days: {},
   tab: 'sell', cat: 'ทั้งหมด', cart: [], disc: { type: 'none' },
-  range: 'today', sel: null, rankBy: 'qty', sheet: null, mem: [], cm: null, redeem: false, mq: '', imgs: {}, ro: false, offline: false, exp: {}, expM: 'cur', stockTab: 'noodle',
+  range: 'today', sel: null, rankBy: 'qty', sheet: null, mem: [], cm: null, redeem: false, mq: '', imgs: {}, ro: false, offline: false, exp: {}, expM: 'cur', stockTab: 'noodle', sellTab: 'noodle',
   base: { cfg: null, top: {}, prod: {}, mem: {}, sale: {}, exp: {}, close: {} }
 };
 let db = null, dl = null, toastTimer = null;
@@ -341,9 +345,10 @@ const prod = id => S.cfg.products.find(p => p.id === id);
 const topOf = id => S.cfg.toppings.find(t => t.id === id);
 const counted = x => !!x && typeof x.stock === 'number';           // a topping with no stock number is not counted yet
 const topUnit = t => t.unit || 'ที่';
-const topInCart = id => S.cart.reduce((a, l) => a + (l.tops.some(t => t.id === id) ? l.q : 0), 0);
+const topInCart = id => S.cart.reduce((a, l) => a + (l.tp === id ? l.q : 0) + (l.tops.some(t => t.id === id) ? l.q : 0), 0);
 const topLeft = id => { const t = topOf(id); return counted(t) ? t.stock - topInCart(id) : Infinity; };
-function moveTops(lines, sign) { lines.forEach(l => (l.tops || []).forEach(t => { const tp = topOf(t.id); if (counted(tp)) tp.stock = Math.max(0, tp.stock + sign * l.q); })); }
+function moveTops(lines, sign) { lines.forEach(l => [...(l.tp ? [{ id: l.tp }] : []), ...(l.tops || [])].forEach(t => { const tp = topOf(t.id); if (counted(tp)) tp.stock = Math.max(0, tp.stock + sign * l.q); })); }
+const isBowl = l => !l.tp;
 const imgOf = p => (p && S.imgs[p.id]) || (p && p.img && IMG[p.img]) || '';
 const thumb = (p, name) => imgOf(p) ? `<img src="${imgOf(p)}" alt="">` : `<span class="noimg">${esc((name || '?').trim().charAt(0))}</span>`;
 
@@ -622,7 +627,8 @@ const fmtPhone = p => { p = String(p || ''); return p.length === 10 ? p.slice(0,
 function cartFree() {
   const m = curMem();
   if (!S.redeem || !m || !S.cart.length || (m.pts || 0) < S.cfg.loyalty.need) return 0;
-  return Math.max(...S.cart.map(l => l.price));
+  const bowls = S.cart.filter(isBowl); if (!bowls.length) return 0;
+  return Math.max(...bowls.map(l => l.price));
 }
 function cartDisc() {
   const s = cartSub() - cartFree(), d = S.disc;
@@ -694,9 +700,21 @@ function viewSell() {
       <span class="ph">${thumb(p, p.name)}${n ? `<b class="cnt">${n}</b>` : ''}<span class="st">${st}</span></span>
       <span class="nm">${esc(p.name)}</span><span class="pr">${B(p.price)}</span></button>`;
   }).join('');
+  const tps = S.cfg.toppings, onTops = S.sellTab === 'tops';
+  const ttiles = tps.map(t => {
+    const n = topInCart(t.id), left = topLeft(t.id);
+    const st = counted(t) ? (t.stock <= 0 ? '<span class="tag out">หมด</span>' : t.stock <= (t.low ?? 5) ? `<span class="tag low">เหลือ ${t.stock}</span>` : '') : '';
+    return `<button class="tile" data-act="pickTop" data-id="${t.id}" ${left <= 0 ? 'disabled' : ''}>
+      <span class="ph">${thumb(t, t.name)}${n ? `<b class="cnt">${n}</b>` : ''}<span class="st">${st}</span></span>
+      <span class="nm">${esc(t.name)}</span><span class="pr">${B(t.price)}</span></button>`;
+  }).join('');
+  const nb = S.cart.filter(isBowl).reduce((a, l) => a + l.q, 0), nt = S.cart.filter(l => l.tp).reduce((a, l) => a + l.q, 0);
   return `<div class="sell"><div>
-    <div class="chips">${cats.map(c => `<button class="chip" data-act="cat" data-id="${esc(c)}" aria-pressed="${S.cat === c}">${esc(c)}</button>`).join('')}</div>
-    <div class="grid">${tiles}</div></div>
+    <div class="seg"><button data-act="sellTab" data-id="noodle" aria-pressed="${!onTops}">เส้น${nb ? ` <b>${nb}</b>` : ''}</button><button data-act="sellTab" data-id="tops" aria-pressed="${onTops}">ท็อปปิ้ง${nt ? ` <b>${nt}</b>` : ''}</button></div>
+    ${onTops
+      ? `<div class="grid">${ttiles || '<p class="empty">ยังไม่มีท็อปปิ้ง เพิ่มได้ในแท็บสต็อก</p>'}</div>`
+      : `<div class="chips">${cats.map(c => `<button class="chip" data-act="cat" data-id="${esc(c)}" aria-pressed="${S.cat === c}">${esc(c)}</button>`).join('')}</div>
+    <div class="grid">${tiles}</div>`}</div>
     <aside class="aside"><h2>บิลนี้</h2>${cartHTML()}</aside></div>`;
 }
 function memBlock() {
@@ -719,7 +737,7 @@ function keepRecv() { const r = $('#recv'); if (r && S.sheet) S.sheet.recv = r.v
 function cartHTML() {
   if (!S.cart.length) return '<p class="empty">ยังไม่มีรายการ แตะรูปสินค้าเพื่อเพิ่มลงบิล</p>';
   const lines = S.cart.map((l, i) => `<div class="ln"><div class="tx"><b>${esc(l.n)}</b>
-    <small>${l.tops.length ? esc(l.tops.map(t => '+' + t.n).join(' ')) + ' ' : ''}${B(unitOf(l))} ต่อชาม</small></div>
+    <small>${l.tp ? 'ท็อปปิ้ง ' + B(l.price) + ' ต่อ' + esc(topUnit(topOf(l.tp) || {})) : (l.tops.length ? esc(l.tops.map(t => '+' + t.n).join(' ')) + ' ' : '') + B(unitOf(l)) + ' ต่อชาม'}</small></div>
     <span class="step"><button data-act="lq" data-id="${i}" data-d="-1" aria-label="ลด">−</button><span>${l.q}</span><button data-act="lq" data-id="${i}" data-d="1" aria-label="เพิ่ม">+</button></span>
     <span class="am">${B(unitOf(l) * l.q)}</span></div>`).join('');
   const d = S.disc, dv = cartDisc();
@@ -730,7 +748,7 @@ function cartHTML() {
   return `<div class="cart">${lines}
     <h3>สมาชิก</h3>${memHTML}
     <h3>ส่วนลด</h3><div class="chips">${chips}</div>
-    <div class="tot"><span>รวม ${cartQty()} ชาม</span><span>${B(cartSub())}</span></div>
+    <div class="tot"><span>รวม ${S.cart.filter(isBowl).reduce((a, l) => a + l.q, 0)} ชาม${S.cart.some(l => l.tp) ? ' + ท็อปปิ้ง ' + S.cart.filter(l => l.tp).reduce((a, l) => a + l.q, 0) : ''}</span><span>${B(cartSub())}</span></div>
     ${free ? `<div class="tot"><span>แลก ${L.need} แต้ม ฟรี 1 ชาม</span><span>−${B(free)}</span></div>` : ''}
     ${dv ? `<div class="tot"><span>${esc(d.label)}</span><span>−${B(dv)}</span></div>` : ''}
     <div class="tot big"><span>ต้องรับ</span><span>${B(cartTotal())}</span></div>
@@ -753,7 +771,7 @@ function viewSum() {
   const all = days.flatMap(k => ((S.days[k] || {}).bills || []).map(b => ({ ...b, day: k })));
   const rev = bills.reduce((a, b) => a + b.total, 0), cost = bills.reduce((a, b) => a + (b.cost || 0), 0);
   const profit = rev - cost, disc = bills.reduce((a, b) => a + (b.disc || 0) + (b.free || 0), 0);
-  const bowls = bills.reduce((a, b) => a + b.items.reduce((x, l) => x + l.q, 0), 0);
+  const bowls = bills.reduce((a, b) => a + b.items.filter(isBowl).reduce((x, l) => x + l.q, 0), 0);
   const hasDemo = Object.values(S.days).some(d => (d.bills || []).some(b => b.demo));
   const ranges = [['today', 'วันนี้'], ['7d', '7 วัน'], ['month', 'เดือนนี้'], ['prev', 'เดือนก่อน']];
 
@@ -779,6 +797,7 @@ function viewSum() {
   // ranking
   const agg = {}, tops = {};
   bills.forEach(b => b.items.forEach(l => {
+    if (l.tp) { const x = tops[l.n] || (tops[l.n] = { n: l.n, qty: 0, rev: 0 }); x.qty += l.q; x.rev += l.price * l.q; return; }
     const a = agg[l.p] || (agg[l.p] = { id: l.p, n: l.n, qty: 0, rev: 0, profit: 0 });
     a.qty += l.q; a.rev += l.price * l.q; a.profit += (l.price - (l.cost || 0)) * l.q;
     (l.tops || []).forEach(t => { const x = tops[t.n] || (tops[t.n] = { n: t.n, qty: 0, rev: 0 }); x.qty += l.q; x.rev += t.price * l.q; });
@@ -858,7 +877,7 @@ function viewStock() {
   const tops = S.stockTab === 'tops';
   const trows = S.cfg.toppings.map(t => {
     const margin = t.price - (t.cost || 0);
-    return `<div class="sk"><span class="noimg">${esc(t.name.trim().charAt(0))}</span>
+    return `<div class="sk">${thumb(t, t.name)}
       <div><div class="nm">${esc(t.name)}</div>
         <div class="mt">ขาย ${B(t.price)} ทุน ${B(t.cost)} <b>กำไร ${B(margin)}${t.price ? ' (' + Math.round(margin / t.price * 100) + '%)' : ''}</b></div>
         <div class="mt">${counted(t) ? `นับสต็อกเป็น${esc(topUnit(t))} เตือนเมื่อเหลือ ${t.low ?? 5}` : 'ยังไม่นับสต็อก ขายได้ไม่จำกัด กด + เพื่อเริ่มนับ'}</div></div>
@@ -1023,7 +1042,7 @@ function renderSheet() {
       <button class="btn red" data-act="saveProd">บันทึกสินค้า</button>${s.id ? '<p class="center"><button class="linkbtn" data-act="delProd">ลบสินค้านี้</button></p>' : ''}`);
   } else if (s.type === 'topEdit') {
     const t = s.id ? topOf(s.id) : { name: '', price: '', cost: '', unit: 'ที่', low: 5 };
-    html = shell(s.id ? 'แก้ไขท็อปปิ้ง' : 'เพิ่มท็อปปิ้ง', `<label class="f">ชื่อท็อปปิ้ง<input id="tName" value="${esc(t.name)}" placeholder="เช่น ไข่ต้ม"></label>
+    html = shell(s.id ? 'แก้ไขท็อปปิ้ง' : 'เพิ่มท็อปปิ้ง', `<div id="pImgBox">${photoBlock(s)}</div><label class="f">ชื่อท็อปปิ้ง<input id="tName" value="${esc(t.name)}" placeholder="เช่น ไข่ต้ม"></label>
       <div class="row2"><label class="f">ราคาขาย<input id="tPrice" type="number" inputmode="decimal" min="0" value="${t.price}"></label><label class="f">ต้นทุนต่อหน่วย<input id="tCost" type="number" inputmode="decimal" min="0" value="${t.cost}"></label></div>
       <div class="row2"><label class="f">สต็อก (เว้นว่าง = ไม่นับ)<input id="tStock" type="number" inputmode="numeric" min="0" value="${counted(t) ? t.stock : ''}" placeholder="ไม่นับ"></label><label class="f">หน่วยนับ<input id="tUnit" value="${esc(t.unit || 'ที่')}" placeholder="ฟอง ชิ้น แผ่น"></label></div>
       <label class="f">เตือนเมื่อเหลือ<input id="tLow" type="number" inputmode="numeric" min="0" value="${t.low ?? 5}"></label>
@@ -1131,7 +1150,7 @@ function renderSheet() {
   if (s.type === 'pay' && s.m === 'cash') updateChange();
 }
 function photoBlock(s) {
-  const src = s.img !== undefined ? s.img : (s.id ? imgOf(prod(s.id)) : '');
+  const src = s.img !== undefined ? s.img : (s.id ? imgOf(s.type === 'topEdit' ? topOf(s.id) : prod(s.id)) : '');
   return `<div class="pimg"><div class="pprev">${src ? `<img src="${src}" alt="รูปสินค้า">` : 'ยังไม่มีรูป'}</div>
     <div class="pacts"><label class="btn sm line" for="pImg">${src ? 'เปลี่ยนรูป' : 'เลือกรูป'}</label><input id="pImg" type="file" accept="image/*" hidden>
     ${src ? '<button class="linkbtn" data-act="rmImg" style="padding-left:0">ลบรูป</button>' : ''}<small>ถ่ายหรือเลือกรูปซองสินค้า ระบบย่อรูปให้เอง</small></div></div>`;
@@ -1231,7 +1250,7 @@ function commitSale() {
   let recv = tot;
   if (s.m === 'cash') { const el = $('#recv'); recv = el && el.value !== '' ? N(el.value) : tot; if (recv < tot) return; }
   const k = today(), day = S.days[k] || (S.days[k] = { date: k, bills: [] });
-  const items = S.cart.map(l => ({ p: l.p, n: l.n, q: l.q, price: l.price, cost: l.cost || 0, tops: l.tops.map(t => ({ id: t.id, n: t.n, price: t.price, cost: t.cost || 0 })) }));
+  const items = S.cart.map(l => ({ p: l.p, ...(l.tp ? { tp: l.tp } : {}), n: l.n, q: l.q, price: l.price, cost: l.cost || 0, tops: l.tops.map(t => ({ id: t.id, n: t.n, price: t.price, cost: t.cost || 0 })) }));
   const bill = { id: uid('b'), t: new Date().toISOString(), items, sub: cartSub(), disc: cartDisc(), dl: cartDisc() ? S.disc.label : '', total: tot,
     cost: S.cart.reduce((a, l) => a + unitCost(l) * l.q, 0), pay: s.m, recv };
   const mb = curMem(), free = cartFree(), earn = earnPts(tot, mb);
@@ -1421,9 +1440,10 @@ const ACT = {
     let t = s.id && topOf(s.id);
     if (t) Object.assign(t, v); else { t = { id: uid('t'), ord: Date.now(), ...v }; S.cfg.toppings.push(t); }
     if (st === '') delete t.stock; else t.stock = Math.max(0, Math.round(N(st)));
+    if (s.img !== undefined) { if (s.img) S.imgs[t.id] = s.img; else delete S.imgs[t.id]; saveImg(t.id); }
     saveCfg(); closeSheet(); S.stockTab = 'tops'; render(); toast('บันทึกท็อปปิ้งแล้ว');
   },
-  delTop: () => { const id = S.sheet.id; S.cfg.toppings = S.cfg.toppings.filter(t => t.id !== id); saveCfg(); closeSheet(); render(); toast('ลบท็อปปิ้งแล้ว'); },
+  delTop: () => { const id = S.sheet.id; if (S.imgs[id]) { delete S.imgs[id]; saveImg(id); } S.cfg.toppings = S.cfg.toppings.filter(t => t.id !== id); saveCfg(); closeSheet(); render(); toast('ลบท็อปปิ้งแล้ว'); },
   topBulk: () => openSheet({ type: 'topBulk', rows: S.cfg.toppings.map(t => ({ id: t.id, name: t.name, price: t.price, cost: t.cost, stock: t.stock })) }),
   saveTopBulk: () => {
     const old = S.cfg.toppings;
@@ -1479,7 +1499,21 @@ const ACT = {
   },
   tab: el => { S.tab = el.dataset.id; S.sel = null; render(); window.scrollTo(0, 0); },
   cat: el => { S.cat = el.dataset.id; render(); },
-  pick: el => openSheet({ type: 'opt', id: el.dataset.id, tops: [], q: 1 }),
+  sellTab: el => { S.sellTab = el.dataset.id; render(); },
+  pick: el => {
+    const p = prod(el.dataset.id); if (!p) return;
+    if (inCart(p.id) >= (p.stock || 0)) return toast(`${p.name} เหลือ ${p.stock || 0} ซอง`);
+    const same = S.cart.find(l => l.p === p.id && !l.tops.length);
+    if (same) same.q++; else S.cart.push({ p: p.id, n: p.name, price: N(p.price), cost: N(p.cost), q: 1, tops: [] });
+    render(); renderSheet();
+  },
+  pickTop: el => {
+    const t = topOf(el.dataset.id); if (!t) return;
+    if (topLeft(t.id) <= 0) return toast(`${t.name} หมดแล้ว`);
+    const same = S.cart.find(l => l.tp === t.id);
+    if (same) same.q++; else S.cart.push({ p: null, tp: t.id, n: t.name, price: N(t.price), cost: N(t.cost), q: 1, tops: [] });
+    render(); renderSheet();
+  },
   top: el => { const s = S.sheet, id = el.dataset.id; s.tops = s.tops.includes(id) ? s.tops.filter(x => x !== id) : [...s.tops, id]; renderSheet(); },
   oq: el => { const s = S.sheet, p = prod(s.id); s.q = Math.min(Math.max(1, s.q + N(el.dataset.d)), Math.max(1, (p.stock || 0) - inCart(p.id))); renderSheet(); },
   addLine: () => {
@@ -1496,6 +1530,7 @@ const ACT = {
   lq: el => {
     const i = N(el.dataset.id), l = S.cart[i], d = N(el.dataset.d), p = prod(l.p);
     if (d > 0 && p && inCart(l.p) >= (p.stock || 0)) return toast(`${p.name} เหลือ ${p.stock} ซอง`);
+    if (d > 0 && l.tp && topLeft(l.tp) <= 0) return toast(`${l.n} หมดแล้ว`);
     const short = d > 0 && l.tops.map(t => topOf(t.id)).find(t => counted(t) && topLeft(t.id) <= 0);
     if (short) return toast(`${short.name} หมดแล้ว`);
     l.q += d; if (l.q <= 0) S.cart.splice(i, 1);
@@ -1575,7 +1610,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', async e => {
   const t = e.target;
   if (t.id === 'pCat') { $('#pCatNewBox').hidden = t.value !== '__new'; if (t.value === '__new') $('#pCatNew').focus(); return; }
-  if (t.id !== 'pImg' || !t.files || !t.files[0] || !S.sheet || S.sheet.type !== 'prod') return;
+  if (t.id !== 'pImg' || !t.files || !t.files[0] || !S.sheet || (S.sheet.type !== 'prod' && S.sheet.type !== 'topEdit')) return;
   const sh = S.sheet;
   try { const d = await shrinkImage(t.files[0]); if (S.sheet !== sh) return; sh.img = d; $('#pImgBox').innerHTML = photoBlock(sh); }
   catch (err) { toast('เปิดรูปนี้ไม่ได้ ลองเลือกรูปแบบ JPG หรือ PNG'); }
