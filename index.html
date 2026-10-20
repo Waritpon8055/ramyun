@@ -95,6 +95,8 @@ body.login .tabs,body.login .day{display:none}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 .tile{display:flex;flex-direction:column;background:var(--surface);border-radius:18px;padding:6px 6px 10px;box-shadow:var(--shadow);position:relative;transition:transform .08s}
 .tile:active{transform:scale(.97)}
+.tapped{animation:bump .16s ease-out}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(.93)}100%{transform:scale(1)}}
 .tile .ph{display:block;position:relative;aspect-ratio:5/4;border-radius:13px;overflow:hidden;background:var(--sunk)}
 .tile .ph img{width:100%;height:100%;object-fit:cover}
 .tile .noimg{display:grid;place-items:center;width:100%;height:100%;font-family:var(--display);font-size:40px;color:var(--muted)}
@@ -297,7 +299,7 @@ label.btn{cursor:pointer}
   .sheet{border-radius:22px}
   .toast{bottom:32px}
 }
-@media (prefers-reduced-motion:reduce){ .sheet{animation:none} .tile{transition:none} }
+@media (prefers-reduced-motion:reduce){ .tapped{animation:none} .sheet{animation:none} .tile{transition:none} }
 </style>
 </head>
 <body>
@@ -314,6 +316,34 @@ label.btn{cursor:pointer}
 <script>
 const IMG = {"samyang": "assets/products/samyang.jpg", "cha-spicy": "assets/products/cha-spicy.jpg", "kimchi": "assets/products/kimchi.jpg", "cha": "assets/products/cha.jpg", "shin": "assets/products/shin.jpg", "bd-original": "assets/products/bd-original.jpg", "bd-3x": "assets/products/bd-3x.jpg", "bd-carbo": "assets/products/bd-carbo.jpg", "bd-cheese": "assets/products/bd-cheese.jpg", "bd-cream": "assets/products/bd-cream.jpg"};
 const DEFAULT_CFG = {"shopName": "ร้านรามยอน", "promptpay": "", "expDays": 30, "products": [{"id": "bd-carbo", "img": "bd-carbo", "name": "บุลดัก คาโบนาร่า", "cat": "บุลดักผัดเผ็ด", "price": 85, "cost": 46, "stock": 24, "low": 6, "exp": "2027-05-31", "active": true}, {"id": "bd-cheese", "img": "bd-cheese", "name": "บุลดัก ชีส", "cat": "บุลดักผัดเผ็ด", "price": 85, "cost": 46, "stock": 18, "low": 6, "exp": "2027-07-07", "active": true}, {"id": "bd-original", "img": "bd-original", "name": "บุลดัก ออริจินัล", "cat": "บุลดักผัดเผ็ด", "price": 79, "cost": 42, "stock": 20, "low": 6, "exp": "", "active": true}, {"id": "bd-cream", "img": "bd-cream", "name": "บุลดัก ครีมคาโบนาร่า", "cat": "บุลดักผัดเผ็ด", "price": 89, "cost": 48, "stock": 4, "low": 6, "exp": "2027-07-01", "active": true}, {"id": "bd-3x", "img": "bd-3x", "name": "บุลดัก เผ็ด x3", "cat": "บุลดักผัดเผ็ด", "price": 85, "cost": 45, "stock": 12, "low": 5, "exp": "2027-07-06", "active": true}, {"id": "cha", "img": "cha", "name": "จาจาโรนี จาจังมยอน", "cat": "จาจังมยอน", "price": 75, "cost": 38, "stock": 15, "low": 5, "exp": "2027-06-11", "active": true}, {"id": "cha-spicy", "img": "cha-spicy", "name": "จาจาโรนี จาจังเผ็ด", "cat": "จาจังมยอน", "price": 79, "cost": 40, "stock": 9, "low": 5, "exp": "", "active": true}, {"id": "shin", "img": "shin", "name": "ชิน รามยอน", "cat": "รามยอนน้ำ", "price": 65, "cost": 30, "stock": 16, "low": 5, "exp": "", "active": true}, {"id": "kimchi", "img": "kimchi", "name": "กิมจิ ราเมง", "cat": "รามยอนน้ำ", "price": 59, "cost": 26, "stock": 3, "low": 5, "exp": "2027-03-12", "active": true}, {"id": "samyang", "img": "samyang", "name": "ซัมยัง ราเมง ออริจินัล", "cat": "รามยอนน้ำ", "price": 59, "cost": 25, "stock": 14, "low": 5, "exp": "2027-05-06", "active": true}], "toppings": [{"id": "t-egg", "name": "ไข่ต้ม", "price": 10, "cost": 5}, {"id": "t-cheese", "name": "ชีสสไลซ์", "price": 15, "cost": 8}, {"id": "t-sausage", "name": "ไส้กรอก", "price": 15, "cost": 8}, {"id": "t-crab", "name": "ปูอัด", "price": 15, "cost": 7}, {"id": "t-kimchi", "name": "กิมจิ", "price": 20, "cost": 10}, {"id": "t-tteok", "name": "ต๊อกบกกี", "price": 20, "cost": 9}], "promos": [{"id": "d-10", "name": "", "type": "pct", "val": 10}, {"id": "d-20", "name": "", "type": "baht", "val": 20}, {"id": "d-std", "name": "นักเรียน ลด 5%", "type": "pct", "val": 5}]};
+
+/* ---------- tap feedback (saved per device) ---------- */
+const PREF = (() => { try { return JSON.parse(localStorage.getItem('pos-feedback')) || {}; } catch (e) { return {}; } })();
+const fbOn = k => PREF[k] !== false;
+const canVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+function savePref() { try { localStorage.setItem('pos-feedback', JSON.stringify(PREF)); } catch (e) {} }
+let AC = null;
+function tone(freqs, dur, vol) {
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+    let t = AC.currentTime;
+    freqs.forEach(f => {
+      const o = AC.createOscillator(), g = AC.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02); t += dur * 0.9;
+    });
+  } catch (e) {}
+}
+const SOUND = { add: [[1320], 0.05, 0.09], remove: [[700], 0.05, 0.08], key: [[1050], 0.035, 0.06], done: [[880, 1320], 0.1, 0.1], err: [[220, 170], 0.13, 0.12] };
+const BUZZ = { add: 12, remove: 12, key: 8, done: [20, 40, 30], err: [60, 40, 60] };
+function fb(kind) {
+  if (!kind) return;
+  if (fbOn('sound')) { const [f, d, v] = SOUND[kind]; tone(f, d, v); }
+  if (fbOn('vibrate') && canVibrate) { try { navigator.vibrate(BUZZ[kind]); } catch (e) {} }
+}
+const FB = { pick: 'add', pickTop: 'add', cashNote: 'key', cashKey: 'key', quick: 'key', stk: 'key', tstk: 'key', beq: 'key' };
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1045,6 +1075,10 @@ function viewSet() {
     <div class="setrow"><div class="tx"><small>${c.prodCats.length ? esc(c.prodCats.join(', ')) : 'ยังไม่มีหมวด'}</small></div><button class="btn sm" data-act="editProdCats">แก้ไข</button></div></section>
   <section class="card"><h2>ของที่ซื้อบ่อย</h2>
     <div class="setrow"><div class="tx"><small>${esc(c.buyItems.map(x => x.name + (x.fixed ? ' (ประจำ)' : '')).join(', ')) || 'ยังไม่มีรายการ'}</small></div><button class="btn sm" data-act="editBuyItems">แก้ไข</button></div></section>
+  <section class="card"><h2>เสียงและการสั่น</h2>
+    <div class="setrow"><div class="tx"><b>เสียงตอนแตะ</b><small>เสียงสั้นๆ ตอนเพิ่มของเข้าบิล แตะแบงก์ บันทึกการขาย และเสียงต่ำเมื่อของหมด</small></div><button class="chip" data-act="pref" data-id="sound" aria-pressed="${fbOn('sound')}">${fbOn('sound') ? 'เปิด' : 'ปิด'}</button></div>
+    <div class="setrow"><div class="tx"><b>สั่นตอนแตะ</b><small>${canVibrate ? 'สั่นเบาๆ ทุกครั้งที่แตะ' : 'เครื่องนี้สั่นจากหน้าเว็บไม่ได้ (iPad และ iPhone ไม่รองรับ) ใช้เสียงและปุ่มยุบแทน'}</small></div>${canVibrate ? `<button class="chip" data-act="pref" data-id="vibrate" aria-pressed="${fbOn('vibrate')}">${fbOn('vibrate') ? 'เปิด' : 'ปิด'}</button>` : ''}</div>
+    <div class="setrow"><div class="tx"><small>ตั้งค่านี้ใช้เฉพาะเครื่องนี้ แต่ละเครื่องเปิดปิดเองได้ ถ้าไม่มีเสียง ให้เช็กปุ่มปิดเสียงของเครื่อง</small></div><button class="btn sm" data-act="testFb">ทดสอบ</button></div></section>
   <section class="card"><h2>ข้อมูล</h2>
     ${dl ? '<div class="setrow"><div class="tx"><b>สำรองข้อมูลเป็น Excel</b><small>ไฟล์เดียวมีสินค้า ท็อปปิ้ง บิลทั้งหมด และสมาชิก</small></div><button class="btn sm" data-act="csv">สำรองข้อมูล</button></div>' : ''}
     ${hasDemo ? '<div class="setrow"><div class="tx"><b>ข้อมูลตัวอย่าง</b><small>ยอดขายสมมติที่ใส่ไว้ให้ดูกราฟ ลบก่อนเริ่มขายจริง</small></div><button class="btn sm" data-act="askClearDemo">ลบข้อมูลตัวอย่าง</button></div>' : ''}
@@ -1345,6 +1379,7 @@ function commitSale() {
   saveDay(k); saveCfg();
   S.cart = []; S.disc = { type: 'none' }; S.sel = null; S.cm = null; S.redeem = false;
   closeSheet(); render();
+  S._fb = 'done';
   toast((s.m === 'cash' && recv > tot ? `บันทึกการขายแล้ว ทอน ${B(recv - tot)}` : 'บันทึกการขายแล้ว') + (mb ? ` ${mb.name} ได้ +${earn} แต้ม รวม ${mb.pts} แต้ม` : ''));
 }
 function voidBill(dayK, id) {
@@ -1535,6 +1570,8 @@ const ACT = {
     S.cfg.toppings = [...others, ...mine].sort((a, b) => (a.ord || 0) - (b.ord || 0));
     saveCfg(); closeSheet(); render(); toast(`บันทึก${GROUP[g].label}แล้ว`);
   },
+  pref: el => { const k = el.dataset.id; PREF[k] = !fbOn(k); savePref(); render(); if (fbOn(k)) S._fb = 'add'; },
+  testFb: () => { fb('add'); setTimeout(() => fb('add'), 180); setTimeout(() => fb('done'), 420); },
   editBuyItems: () => openSheet({ type: 'buyItems', rows: clone(S.cfg.buyItems) }),
   saveBuyItems: () => {
     const old = S.cfg.buyItems;
@@ -1582,14 +1619,14 @@ const ACT = {
   sellTab: el => { S.sellTab = el.dataset.id; render(); },
   pick: el => {
     const p = prod(el.dataset.id); if (!p) return;
-    if (inCart(p.id) >= (p.stock || 0)) return toast(`${p.name} เหลือ ${p.stock || 0} ซอง`);
+    if (inCart(p.id) >= (p.stock || 0)) return (S._fb = 'err'), toast(`${p.name} เหลือ ${p.stock || 0} ซอง`);
     const same = S.cart.find(l => l.p === p.id && !l.tops.length);
     if (same) same.q++; else S.cart.push({ p: p.id, n: p.name, price: N(p.price), cost: N(p.cost), q: 1, tops: [] });
     render(); renderSheet();
   },
   pickTop: el => {
     const t = topOf(el.dataset.id); if (!t) return;
-    if (topLeft(t.id) <= 0) return toast(`${t.name} หมดแล้ว`);
+    if (topLeft(t.id) <= 0) return (S._fb = 'err'), toast(`${t.name} หมดแล้ว`);
     const same = S.cart.find(l => l.tp === t.id);
     if (same) same.q++; else S.cart.push({ p: null, tp: t.id, ...(grpOf(t) === 'drink' ? { g: 'drink' } : {}), n: t.name, price: N(t.price), cost: N(t.cost), q: 1, tops: [] });
     render(); renderSheet();
@@ -1609,8 +1646,8 @@ const ACT = {
   openCart: () => openSheet({ type: 'cart' }),
   lq: el => {
     const i = N(el.dataset.id), l = S.cart[i], d = N(el.dataset.d), p = prod(l.p);
-    if (d > 0 && p && inCart(l.p) >= (p.stock || 0)) return toast(`${p.name} เหลือ ${p.stock} ซอง`);
-    if (d > 0 && l.tp && topLeft(l.tp) <= 0) return toast(`${l.n} หมดแล้ว`);
+    if (d > 0 && p && inCart(l.p) >= (p.stock || 0)) return (S._fb = 'err'), toast(`${p.name} เหลือ ${p.stock} ซอง`);
+    if (d > 0 && l.tp && topLeft(l.tp) <= 0) return (S._fb = 'err'), toast(`${l.n} หมดแล้ว`);
     const short = d > 0 && l.tops.map(t => topOf(t.id)).find(t => counted(t) && topLeft(t.id) <= 0);
     if (short) return toast(`${short.name} หมดแล้ว`);
     l.q += d; if (l.q <= 0) S.cart.splice(i, 1);
@@ -1680,7 +1717,15 @@ document.addEventListener('click', e => {
   if (!el || el.disabled) return;
   if (el.dataset.act === 'scrim' && e.target !== el) return;
   if (S.ro && RO_BLOCK.has(el.dataset.act)) { closeSheet(); render(); toast('บัญชีนี้ดูได้อย่างเดียว บันทึกข้อมูลไม่ได้'); return; }
-  const f = ACT[el.dataset.act]; if (f) f(el, e);
+  const act = el.dataset.act, f = ACT[act];
+  S._fb = act === 'lq' ? (N(el.dataset.d) > 0 ? 'add' : 'remove') : FB[act];
+  if (f) f(el, e);
+  fb(S._fb); S._fb = null;
+  if (el.classList.contains('tile') || el.classList.contains('note-b') || el.closest('.pad')) {
+    // the tile may have been redrawn by the action, so bump the button that is on screen now
+    const id = el.dataset.id || '', now = (el.isConnected ? el : null) || document.querySelector(`[data-act="${act}"][data-id="${window.CSS && CSS.escape ? CSS.escape(id) : id}"]`);
+    if (now) { now.classList.remove('tapped'); void now.offsetWidth; now.classList.add('tapped'); }
+  }
 });
 document.addEventListener('input', e => {
   const t = e.target;
