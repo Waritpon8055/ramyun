@@ -108,6 +108,8 @@ body.login .tabs,body.login .day{display:none}
 .aside{display:none}
 .cart .ln{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
 .cart .ln .tx{flex:1;min-width:0}
+.cart .gh{display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:var(--muted);padding:12px 0 2px;border-bottom:1px solid var(--line)}
+.cart .gh:first-child{padding-top:0}
 .cart .ln .th{width:44px;height:36px;flex:none;border-radius:9px;overflow:hidden;background:var(--sunk)}
 .cart .ln .th img{width:100%;height:100%;object-fit:cover}
 .cart .ln .th .noimg{display:grid;place-items:center;width:100%;height:100%;font-family:var(--display);color:var(--muted)}
@@ -150,7 +152,7 @@ body.login .tabs,body.login .day{display:none}
 .rk .v{font-family:var(--display);font-size:16px;text-align:right;line-height:1.2}
 .rk .v small{display:block;font-family:var(--body);font-size:12px;color:var(--muted)}
 .split{display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--sunk);margin:6px 0 8px}
-.split i{background:var(--ink)} .split i+i{background:var(--yellow)}
+.split i{background:var(--ink)} .split i+i{background:var(--yellow)} .split i+i+i{background:var(--red)}
 .legend{display:flex;justify-content:space-between;font-size:14px}
 .bill{display:flex;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line);align-items:flex-start}
 .bill:last-child{border-bottom:0}
@@ -207,8 +209,8 @@ label.f input,label.f select,.in{display:block;width:100%;margin-top:4px;padding
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;font-size:15px;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
 
 .mfind .in{margin-top:0}
-.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--sunk);padding:5px;border-radius:16px;margin-bottom:12px}
-.seg button{min-height:48px;border-radius:12px;font-family:var(--display);font-size:18px;text-align:center;color:var(--muted)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--sunk);padding:5px;border-radius:16px;margin-bottom:12px}
+.seg button{min-height:48px;border-radius:12px;font-family:var(--display);font-size:17px;padding:0 4px;text-align:center;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 .seg b{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;background:var(--red);color:var(--on-red);font-size:14px;font-weight:500;margin-left:6px;vertical-align:middle}
 .due{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
@@ -347,7 +349,11 @@ function normCfg(c) {
 const prod = id => S.cfg.products.find(p => p.id === id);
 const topOf = id => S.cfg.toppings.find(t => t.id === id);
 const counted = x => !!x && typeof x.stock === 'number';           // a topping with no stock number is not counted yet
-const topUnit = t => t.unit || 'ที่';
+const GROUP = { top: { label: 'ท็อปปิ้ง', unit: 'ที่', tab: 'tops' }, drink: { label: 'เครื่องดื่ม', unit: 'ขวด', tab: 'drinks' } };
+const grpOf = x => x && x.g === 'drink' ? 'drink' : 'top';
+const tabGrp = tab => tab === 'drinks' ? 'drink' : 'top';
+const extras = g => S.cfg.toppings.filter(t => grpOf(t) === g);
+const topUnit = t => t.unit || GROUP[grpOf(t)].unit;
 const topInCart = id => S.cart.reduce((a, l) => a + (l.tp === id ? l.q : 0) + (l.tops.some(t => t.id === id) ? l.q : 0), 0);
 const topLeft = id => { const t = topOf(id); return counted(t) ? t.stock - topInCart(id) : Infinity; };
 function moveTops(lines, sign) { lines.forEach(l => [...(l.tp ? [{ id: l.tp }] : []), ...(l.tops || [])].forEach(t => { const tp = topOf(t.id); if (counted(tp)) tp.stock = Math.max(0, tp.stock + sign * l.q); })); }
@@ -703,21 +709,22 @@ function viewSell() {
       <span class="ph">${thumb(p, p.name)}${n ? `<b class="cnt">${n}</b>` : ''}<span class="st">${st}</span></span>
       <span class="nm">${esc(p.name)}</span><span class="pr">${B(p.price)}</span></button>`;
   }).join('');
-  const tps = S.cfg.toppings, onTops = S.sellTab === 'tops';
-  const ttiles = tps.map(t => {
+  const tab = S.sellTab || 'noodle';
+  const etiles = g => extras(g).map(t => {
     const n = topInCart(t.id), left = topLeft(t.id);
     const st = counted(t) ? (t.stock <= 0 ? '<span class="tag out">หมด</span>' : t.stock <= (t.low ?? 5) ? `<span class="tag low">เหลือ ${t.stock}</span>` : '') : '';
     return `<button class="tile" data-act="pickTop" data-id="${t.id}" ${left <= 0 ? 'disabled' : ''}>
       <span class="ph">${thumb(t, t.name)}${n ? `<b class="cnt">${n}</b>` : ''}<span class="st">${st}</span></span>
       <span class="nm">${esc(t.name)}</span><span class="pr">${B(t.price)}</span></button>`;
   }).join('');
-  const nb = S.cart.filter(isBowl).reduce((a, l) => a + l.q, 0), nt = S.cart.filter(l => l.tp).reduce((a, l) => a + l.q, 0);
+  const cnt = g => S.cart.filter(l => g === 'noodle' ? isBowl(l) : l.tp && (l.g || 'top') === g).reduce((a, l) => a + l.q, 0);
+  const segBtn = (id, label, g) => { const c = cnt(g); return `<button data-act="sellTab" data-id="${id}" aria-pressed="${tab === id}">${label}${c ? ` <b>${c}</b>` : ''}</button>`; };
   return `<div class="sell"><div>
-    <div class="seg"><button data-act="sellTab" data-id="noodle" aria-pressed="${!onTops}">เส้น${nb ? ` <b>${nb}</b>` : ''}</button><button data-act="sellTab" data-id="tops" aria-pressed="${onTops}">ท็อปปิ้ง${nt ? ` <b>${nt}</b>` : ''}</button></div>
-    ${onTops
-      ? `<div class="grid">${ttiles || '<p class="empty">ยังไม่มีท็อปปิ้ง เพิ่มได้ในแท็บสต็อก</p>'}</div>`
-      : `<div class="chips">${cats.map(c => `<button class="chip" data-act="cat" data-id="${esc(c)}" aria-pressed="${S.cat === c}">${esc(c)}</button>`).join('')}</div>
-    <div class="grid">${tiles}</div>`}</div>
+    <div class="seg">${segBtn('noodle', 'เส้น', 'noodle')}${segBtn('tops', 'ท็อปปิ้ง', 'top')}${segBtn('drinks', 'เครื่องดื่ม', 'drink')}</div>
+    ${tab === 'noodle'
+      ? `<div class="chips">${cats.map(c => `<button class="chip" data-act="cat" data-id="${esc(c)}" aria-pressed="${S.cat === c}">${esc(c)}</button>`).join('')}</div>
+    <div class="grid">${tiles}</div>`
+      : `<div class="grid">${etiles(tabGrp(tab)) || `<p class="empty">ยังไม่มี${GROUP[tabGrp(tab)].label} เพิ่มได้ในแท็บสต็อก</p>`}</div>`}</div>
     <aside class="aside"><h2>บิลนี้</h2>${cartHTML()}</aside></div>`;
 }
 function memBlock() {
@@ -739,10 +746,15 @@ function memFind(q) {
 function keepRecv() { const r = $('#recv'); if (r && S.sheet) S.sheet.recv = r.value; }
 function cartHTML() {
   if (!S.cart.length) return '<p class="empty">ยังไม่มีรายการ แตะรูปสินค้าเพื่อเพิ่มลงบิล</p>';
-  const lines = S.cart.map((l, i) => `<div class="ln"><span class="th">${thumb(l.tp ? topOf(l.tp) : prod(l.p), l.n)}</span><div class="tx"><b>${esc(l.n)}</b>
-    <small>${l.tp ? 'ท็อปปิ้ง ' + B(l.price) + ' ต่อ' + esc(topUnit(topOf(l.tp) || {})) : (l.tops.length ? esc(l.tops.map(t => '+' + t.n).join(' ')) + ' ' : '') + B(unitOf(l)) + ' ต่อชาม'}</small></div>
+  const line = (l, i) => `<div class="ln"><span class="th">${thumb(l.tp ? topOf(l.tp) : prod(l.p), l.n)}</span><div class="tx"><b>${esc(l.n)}</b>
+    <small>${l.tp ? B(l.price) + ' ต่อ' + esc(topOf(l.tp) ? topUnit(topOf(l.tp)) : GROUP[l.g || 'top'].unit) : (l.tops.length ? esc(l.tops.map(t => '+' + t.n).join(' ')) + ' ' : '') + B(unitOf(l)) + ' ต่อชาม'}</small></div>
     <span class="step"><button data-act="lq" data-id="${i}" data-d="-1" aria-label="ลด">−</button><span>${l.q}</span><button data-act="lq" data-id="${i}" data-d="1" aria-label="เพิ่ม">+</button></span>
-    <span class="am">${B(unitOf(l) * l.q)}</span></div>`).join('');
+    <span class="am">${B(unitOf(l) * l.q)}</span></div>`;
+  const idx = S.cart.map((l, i) => [l, i]);
+  const lines = [['เส้น', ([l]) => isBowl(l)], ['ท็อปปิ้ง', ([l]) => l.tp && (l.g || 'top') === 'top'], ['เครื่องดื่ม', ([l]) => l.tp && l.g === 'drink']].map(([label, f]) => {
+    const ls = idx.filter(f); if (!ls.length) return '';
+    return `<div class="gh"><span>${label} ${ls.reduce((a, [l]) => a + l.q, 0)}</span><span>${B(ls.reduce((a, [l]) => a + unitOf(l) * l.q, 0))}</span></div>` + ls.map(([l, i]) => line(l, i)).join('');
+  }).join('');
   const d = S.disc, dv = cartDisc();
   const chips = [`<button class="chip y" data-act="disc" data-id="none" aria-pressed="${d.type === 'none'}">ไม่ลด</button>`]
     .concat(S.cfg.promos.map(p => `<button class="chip y" data-act="disc" data-id="${p.id}" aria-pressed="${d.id === p.id}">${esc(promoLabel(p))}</button>`))
@@ -751,7 +763,7 @@ function cartHTML() {
   return `<div class="cart">${lines}
     <h3>สมาชิก</h3>${memHTML}
     <h3>ส่วนลด</h3><div class="chips">${chips}</div>
-    <div class="tot"><span>รวม ${S.cart.filter(isBowl).reduce((a, l) => a + l.q, 0)} ชาม${S.cart.some(l => l.tp) ? ' + ท็อปปิ้ง ' + S.cart.filter(l => l.tp).reduce((a, l) => a + l.q, 0) : ''}</span><span>${B(cartSub())}</span></div>
+    <div class="tot"><span>รวม ${S.cart.reduce((a, l) => a + l.q, 0)} รายการ</span><span>${B(cartSub())}</span></div>
     ${free ? `<div class="tot"><span>แลก ${L.need} แต้ม ฟรี 1 ชาม</span><span>−${B(free)}</span></div>` : ''}
     ${dv ? `<div class="tot"><span>${esc(d.label)}</span><span>−${B(dv)}</span></div>` : ''}
     <div class="tot big"><span>ต้องรับ</span><span>${B(cartTotal())}</span></div>
@@ -798,9 +810,10 @@ function viewSum() {
   const best = buckets.reduce((a, b) => b.v > a.v ? b : a, { v: 0 });
 
   // ranking
-  const agg = {}, tops = {};
+  const agg = {}, tops = {}, drinks = {}, grp = { noodle: 0, top: 0, drink: 0 };
   bills.forEach(b => b.items.forEach(l => {
-    if (l.tp) { const x = tops[l.n] || (tops[l.n] = { n: l.n, qty: 0, rev: 0 }); x.qty += l.q; x.rev += l.price * l.q; return; }
+    if (l.tp) { const m = l.g === 'drink' ? drinks : tops, x = m[l.n] || (m[l.n] = { n: l.n, qty: 0, rev: 0 }); x.qty += l.q; x.rev += l.price * l.q; grp[l.g === 'drink' ? 'drink' : 'top'] += l.price * l.q; return; }
+    grp.noodle += l.price * l.q; (l.tops || []).forEach(t => grp.top += t.price * l.q);
     const a = agg[l.p] || (agg[l.p] = { id: l.p, n: l.n, qty: 0, rev: 0, profit: 0 });
     a.qty += l.q; a.rev += l.price * l.q; a.profit += (l.price - (l.cost || 0)) * l.q;
     (l.tops || []).forEach(t => { const x = tops[t.n] || (tops[t.n] = { n: t.n, qty: 0, rev: 0 }); x.qty += l.q; x.rev += t.price * l.q; });
@@ -813,6 +826,8 @@ function viewSum() {
       <div class="v">${S.rankBy === 'qty' ? r.qty + ' ชาม' : B(r[S.rankBy])}<small>${S.rankBy === 'qty' ? B(r.rev) : r.qty + ' ชาม'}</small></div></div>`;
   }).join('') : '<p class="empty">ยังไม่มีการขายในช่วงนี้</p>';
   const topList = Object.values(tops).sort((a, b) => b.qty - a.qty);
+  const drinkList = Object.values(drinks).sort((a, b) => b.qty - a.qty), dmax = Math.max(1, ...drinkList.map(t => t.qty));
+  const gsum = grp.noodle + grp.top + grp.drink, pct = v => gsum ? Math.round(v / gsum * 100) : 0;
   const tmax = Math.max(1, ...topList.map(t => t.qty));
 
   const ma = {};
@@ -853,11 +868,16 @@ function viewSum() {
       <div class="rank">${rankHTML}</div>
     </section></div><div>
     ${monthCard}
+    <section class="card"><h2>ยอดขายแยกกลุ่ม</h2>
+      <div class="split"><i style="width:${pct(grp.noodle)}%"></i><i style="width:${pct(grp.top)}%"></i><i style="width:${pct(grp.drink)}%"></i></div>
+      <div class="cmp" style="margin-bottom:0"><span>เส้น ${pct(grp.noodle)}%</span><span>${B(grp.noodle)}</span><span>ท็อปปิ้ง ${pct(grp.top)}%</span><span>${B(grp.top)}</span><span>เครื่องดื่ม ${pct(grp.drink)}%</span><span>${B(grp.drink)}</span></div>
+      <p class="read" style="margin:8px 0 0">ยอดก่อนหักส่วนลด</p></section>
     <section class="card"><h2>ช่องทางรับเงิน</h2>
       <div class="split"><i style="width:${rev ? cash / rev * 100 : 0}%"></i><i style="width:${rev ? qr / rev * 100 : 0}%"></i></div>
       <div class="legend"><span>เงินสด <b class="num">${B(cash)}</b></span><span>พร้อมเพย์ <b class="num">${B(qr)}</b></span></div>
     </section>
     ${topList.length ? `<section class="card"><h2>ท็อปปิ้งที่ลูกค้าเพิ่ม</h2><div class="rank">${topList.map(t => `<div class="rk" style="grid-template-columns:1fr auto"><div><div class="nm">${esc(t.n)}</div><div class="bar"><i style="width:${t.qty / tmax * 100}%"></i></div></div><div class="v">${t.qty} ครั้ง<small>${B(t.rev)}</small></div></div>`).join('')}</div></section>` : ''}
+    ${drinkList.length ? `<section class="card"><h2>เครื่องดื่มขายดี</h2><div class="rank">${drinkList.map(t => `<div class="rk" style="grid-template-columns:44px 1fr auto">${thumb(S.cfg.toppings.find(x => x.name === t.n), t.n)}<div><div class="nm">${esc(t.n)}</div><div class="bar"><i style="width:${t.qty / dmax * 100}%"></i></div></div><div class="v">${t.qty} ขวด<small>${B(t.rev)}</small></div></div>`).join('')}</div></section>` : ''}
     ${memCard}
     <section class="card"><h2>บิลล่าสุด</h2>${billHTML}</section>
   </div></div>`;
@@ -877,23 +897,24 @@ function viewStock() {
       <div class="rt"><span class="step"><button data-act="stk" data-id="${p.id}" data-d="-1" aria-label="ลดสต็อก">−</button><span>${p.stock || 0}</span><button data-act="stk" data-id="${p.id}" data-d="1" aria-label="เพิ่มสต็อก">+</button></span>
         <button class="linkbtn" data-act="editProd" data-id="${p.id}">แก้ไข</button></div></div>`;
   }).join('');
-  const tops = S.stockTab === 'tops';
-  const trows = S.cfg.toppings.map(t => {
+  const tab = S.stockTab || 'noodle', g = tabGrp(tab), GL = GROUP[g].label;
+  const trows = extras(g).map(t => {
     const margin = t.price - (t.cost || 0);
     return `<div class="sk">${thumb(t, t.name)}
       <div><div class="nm">${esc(t.name)}</div>
         <div class="mt">ขาย ${B(t.price)} ทุน ${B(t.cost)} <b>กำไร ${B(margin)}${t.price ? ' (' + Math.round(margin / t.price * 100) + '%)' : ''}</b></div>
         <div class="mt">${counted(t) ? `นับสต็อกเป็น${esc(topUnit(t))} เตือนเมื่อเหลือ ${t.low ?? 5}` : 'ยังไม่นับสต็อก ขายได้ไม่จำกัด กด + เพื่อเริ่มนับ'}</div></div>
       <div class="rt"><span class="step"><button data-act="tstk" data-id="${t.id}" data-d="-1" aria-label="ลดสต็อก" ${counted(t) ? '' : 'disabled style="opacity:.35"'}>−</button><span>${counted(t) ? t.stock : '–'}</span><button data-act="tstk" data-id="${t.id}" data-d="1" aria-label="เพิ่มสต็อก">+</button></span>
-        <button class="linkbtn" data-act="editTop" data-id="${t.id}">แก้ไข</button></div></div>`;
+        <button class="linkbtn" data-act="editTop" data-id="${t.id}" data-g="${g}">แก้ไข</button></div></div>`;
   }).join('');
-  return `${alHTML}<div class="chips"><button class="chip" data-act="stockTab" data-id="noodle" aria-pressed="${!tops}">เส้น (${S.cfg.products.length})</button><button class="chip" data-act="stockTab" data-id="tops" aria-pressed="${tops}">ท็อปปิ้ง (${S.cfg.toppings.length})</button></div>
-    ${tops
-      ? `<section class="card"><h2>ท็อปปิ้งและสต็อก</h2>${trows || '<p class="empty">ยังไม่มีท็อปปิ้ง กด “เพิ่มท็อปปิ้ง” เพื่อเริ่ม</p>'}</section>
-        <div class="row2" style="margin-bottom:10px"><button class="btn line" data-act="editTop" data-id="">เพิ่มท็อปปิ้ง</button><button class="btn line" data-act="topBulk">กรอกหลายรายการ</button></div>`
+  const chip = (id, label, n) => `<button class="chip" data-act="stockTab" data-id="${id}" aria-pressed="${tab === id}">${label} (${n})</button>`;
+  return `${alHTML}<div class="chips">${chip('noodle', 'เส้น', S.cfg.products.length)}${chip('tops', 'ท็อปปิ้ง', extras('top').length)}${chip('drinks', 'เครื่องดื่ม', extras('drink').length)}</div>
+    ${tab !== 'noodle'
+      ? `<section class="card"><h2>${GL}และสต็อก</h2>${trows || `<p class="empty">ยังไม่มี${GL} กด “เพิ่ม${GL}” เพื่อเริ่ม</p>`}</section>
+        <div class="row2" style="margin-bottom:10px"><button class="btn line" data-act="editTop" data-id="" data-g="${g}">เพิ่ม${GL}</button><button class="btn line" data-act="topBulk" data-g="${g}">กรอกหลายรายการ</button></div>`
       : `<section class="card"><h2>สินค้าและสต็อก</h2>${rows || '<p class="empty">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>'}</section>
         <div class="row2" style="margin-bottom:10px"><button class="btn line" data-act="editProd" data-id="">เพิ่มสินค้า</button><button class="btn line" data-act="bulk">กรอกหลายรายการ</button></div>`}
-    <button class="btn" data-act="newStockIn" data-k="${tops ? 'top' : 'prod'}">รับของเข้าสต็อก</button>`;
+    <button class="btn" data-act="newStockIn" data-k="${tab === 'noodle' ? 'prod' : g}">รับของเข้าสต็อก</button>`;
 }
 
 /* ---------- render: expenses ---------- */
@@ -1006,7 +1027,7 @@ function renderSheet() {
     const p = prod(s.id), unit = p.price + S.cfg.toppings.filter(t => s.tops.includes(t.id)).reduce((a, t) => a + t.price, 0);
     const maxQ = (p.stock || 0) - inCart(p.id);
     html = shell(p.name, `${imgOf(p) ? `<img class="opt-img" src="${imgOf(p)}" alt="">` : ''}
-      ${S.cfg.toppings.length ? `<div class="tops">${S.cfg.toppings.map(t => { const left = topLeft(t.id), on = s.tops.includes(t.id), out = left <= 0 && !on; return `<button data-act="top" data-id="${t.id}" aria-pressed="${on}" ${out ? 'disabled style="opacity:.45"' : ''}><span>${esc(t.name)}${out ? ' หมด' : left <= 5 ? ` <small>เหลือ ${left}</small>` : ''}</span><span>+${t.price}</span></button>`; }).join('')}</div>` : ''}
+      ${extras('top').length ? `<div class="tops">${extras('top').map(t => { const left = topLeft(t.id), on = s.tops.includes(t.id), out = left <= 0 && !on; return `<button data-act="top" data-id="${t.id}" aria-pressed="${on}" ${out ? 'disabled style="opacity:.45"' : ''}><span>${esc(t.name)}${out ? ' หมด' : left <= 5 ? ` <small>เหลือ ${left}</small>` : ''}</span><span>+${t.price}</span></button>`; }).join('')}</div>` : ''}
       <div class="qtyrow"><span>จำนวน${maxQ <= 3 ? ` <span class="tag low">เหลือ ${maxQ}</span>` : ''}</span><span class="step"><button data-act="oq" data-d="-1" aria-label="ลด">−</button><span>${s.q}</span><button data-act="oq" data-d="1" aria-label="เพิ่ม">+</button></span></div>
       <button class="btn red" data-act="addLine">เพิ่มลงบิล ${B(unit * s.q)}</button>`);
   } else if (s.type === 'cart') {
@@ -1044,16 +1065,18 @@ function renderSheet() {
       <label class="f">สถานะ<select id="pActive"><option value="1" ${p.active !== false ? 'selected' : ''}>ขายอยู่</option><option value="0" ${p.active === false ? 'selected' : ''}>พักขาย</option></select></label>
       <button class="btn red" data-act="saveProd">บันทึกสินค้า</button>${s.id ? '<p class="center"><button class="linkbtn" data-act="delProd">ลบสินค้านี้</button></p>' : ''}`);
   } else if (s.type === 'topEdit') {
-    const t = s.id ? topOf(s.id) : { name: '', price: '', cost: '', unit: 'ที่', low: 5 };
-    html = shell(s.id ? 'แก้ไขท็อปปิ้ง' : 'เพิ่มท็อปปิ้ง', `<div id="pImgBox">${photoBlock(s)}</div><label class="f">ชื่อท็อปปิ้ง<input id="tName" value="${esc(t.name)}" placeholder="เช่น ไข่ต้ม"></label>
+    const g = s.id ? grpOf(topOf(s.id)) : s.g || 'top', GL = GROUP[g].label, drink = g === 'drink';
+    const t = s.id ? topOf(s.id) : { name: '', price: '', cost: '', unit: GROUP[g].unit, low: 5, ...(drink ? { stock: 0 } : {}) };
+    html = shell((s.id ? 'แก้ไข' : 'เพิ่ม') + GL, `<div id="pImgBox">${photoBlock(s)}</div><label class="f">ชื่อ${GL}<input id="tName" value="${esc(t.name)}" placeholder="${drink ? 'เช่น โค้ก 325 มล.' : 'เช่น ไข่ต้ม'}"></label>
       <div class="row2"><label class="f">ราคาขาย<input id="tPrice" type="number" inputmode="decimal" min="0" value="${t.price}"></label><label class="f">ต้นทุนต่อหน่วย<input id="tCost" type="number" inputmode="decimal" min="0" value="${t.cost}"></label></div>
-      <div class="row2"><label class="f">สต็อก (เว้นว่าง = ไม่นับ)<input id="tStock" type="number" inputmode="numeric" min="0" value="${counted(t) ? t.stock : ''}" placeholder="ไม่นับ"></label><label class="f">หน่วยนับ<input id="tUnit" value="${esc(t.unit || 'ที่')}" placeholder="ฟอง ชิ้น แผ่น"></label></div>
+      <div class="row2"><label class="f">${drink ? 'สต็อก' : 'สต็อก (เว้นว่าง = ไม่นับ)'}<input id="tStock" type="number" inputmode="numeric" min="0" value="${counted(t) ? t.stock : ''}" placeholder="${drink ? '0' : 'ไม่นับ'}"></label><label class="f">หน่วยนับ<input id="tUnit" value="${esc(t.unit || GROUP[g].unit)}" placeholder="${drink ? 'ขวด กระป๋อง แก้ว' : 'ฟอง ชิ้น แผ่น'}"></label></div>
       <label class="f">เตือนเมื่อเหลือ<input id="tLow" type="number" inputmode="numeric" min="0" value="${t.low ?? 5}"></label>
-      <button class="btn red" data-act="saveTop">บันทึกท็อปปิ้ง</button>${s.id ? '<p class="center"><button class="linkbtn" data-act="delTop">ลบท็อปปิ้งนี้</button></p>' : ''}`);
+      <button class="btn red" data-act="saveTop">บันทึก${GL}</button>${s.id ? `<p class="center"><button class="linkbtn" data-act="delTop">ลบ${GL}นี้</button></p>` : ''}`);
   } else if (s.type === 'topBulk') {
-    html = shell('กรอกท็อปปิ้งหลายรายการ', `<p class="read" style="margin-top:0">แก้ได้ทุกช่อง ช่องสต็อกเว้นว่างคือไม่นับสต็อก แถวที่ลบจะถูกลบเมื่อกดบันทึก</p>
-      <div class="erow e5 ehead"><span>ชื่อ</span><span>ราคา</span><span>ต้นทุน</span><span>สต็อก</span><span></span></div><div id="rows">${s.rows.map(r => `<div class="erow e5"><input class="in" data-k="name" value="${esc(r.name || '')}" placeholder="ชื่อ" data-rid="${esc(r.id || '')}" aria-label="ชื่อ"><input class="in" data-k="price" type="number" inputmode="decimal" value="${r.price ?? ''}" aria-label="ราคา"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${r.cost ?? ''}" aria-label="ต้นทุน"><input class="in" data-k="stock" type="number" inputmode="numeric" value="${typeof r.stock === 'number' ? r.stock : ''}" placeholder="–" aria-label="สต็อก"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`).join('')}</div>
-      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มแถว</button><button class="btn red" data-act="saveTopBulk">บันทึกท็อปปิ้งทั้งหมด</button>`);
+    const GL = GROUP[s.g].label, drink = s.g === 'drink';
+    html = shell(`กรอก${GL}หลายรายการ`, `<p class="read" style="margin-top:0">แก้ได้ทุกช่อง${drink ? '' : ' ช่องสต็อกเว้นว่างคือไม่นับสต็อก'} แถวที่ลบจะถูกลบเมื่อกดบันทึก</p>
+      <div class="erow e5 ehead"><span>ชื่อ</span><span>ราคา</span><span>ต้นทุน</span><span>สต็อก</span><span></span></div><div id="rows">${s.rows.map(r => `<div class="erow e5"><input class="in" data-k="name" value="${esc(r.name || '')}" placeholder="ชื่อ" data-rid="${esc(r.id || '')}" aria-label="ชื่อ"><input class="in" data-k="price" type="number" inputmode="decimal" value="${r.price ?? ''}" aria-label="ราคา"><input class="in" data-k="cost" type="number" inputmode="decimal" value="${r.cost ?? ''}" aria-label="ต้นทุน"><input class="in" data-k="stock" type="number" inputmode="numeric" value="${r.stock === undefined || r.stock === null ? '' : r.stock}" placeholder="${drink ? '0' : '–'}" aria-label="สต็อก"><button data-act="rmRow" aria-label="ลบแถว">×</button></div>`).join('')}</div>
+      <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มแถว</button><button class="btn red" data-act="saveTopBulk">บันทึก${GL}ทั้งหมด</button>`);
   } else if (s.type === 'tops') {
     html = shell('ท็อปปิ้ง', `<div class="erow ehead"><span>ชื่อ</span><span>ราคา</span><span>ต้นทุน</span><span></span></div><div id="rows">${s.rows.map(topRow).join('')}</div>
       <button class="btn line sm" data-act="addRow" style="margin-bottom:14px">เพิ่มท็อปปิ้ง</button><button class="btn red" data-act="saveTops">บันทึกท็อปปิ้ง</button>`);
@@ -1114,8 +1137,8 @@ function renderSheet() {
     const pre = s.pre || {}, sel = pre.prod ? (pre.pk === 'top' ? 't:' : 'p:') + pre.prod : '';
     const opt = (v, label) => `<option value="${v}" ${sel === v ? 'selected' : ''}>${label}</option>`;
     const groups = [['prod', 'เส้น', S.cfg.products.map(p => opt('p:' + p.id, `${esc(p.name)} (เหลือ ${p.stock || 0} ซอง)`))],
-      ['top', 'ท็อปปิ้ง', S.cfg.toppings.map(t => opt('t:' + t.id, `${esc(t.name)} (${counted(t) ? 'เหลือ ' + t.stock + ' ' + esc(topUnit(t)) : 'ยังไม่นับสต็อก'})`))]];
-    if (s.k === 'top') groups.reverse();
+      ...['top', 'drink'].map(g => [g, GROUP[g].label, extras(g).map(t => opt('t:' + t.id, `${esc(t.name)} (${counted(t) ? 'เหลือ ' + t.stock + ' ' + esc(topUnit(t)) : 'ยังไม่นับสต็อก'})`))])];
+    const first = groups.findIndex(gr => gr[0] === s.k); if (first > 0) groups.unshift(groups.splice(first, 1)[0]);
     html = shell(s.edit ? 'แก้ไขการรับของเข้าสต็อก' : 'รับของเข้าสต็อก', (S.cfg.products.length || S.cfg.toppings.length) ? `<label class="f">ของที่รับเข้า<select id="sProd">${groups.filter(g => g[2].length).map(g => `<optgroup label="${g[1]}">${g[2].join('')}</optgroup>`).join('')}</select></label>
       <div class="row2"><label class="f">จำนวน<input id="sQty" type="number" inputmode="numeric" min="1" placeholder="0" value="${pre.qty || ''}"></label><label class="f">จ่ายไปทั้งหมด (บาท)<input id="sAmt" type="number" inputmode="decimal" min="0" placeholder="0" value="${pre.amt || ''}"></label></div>
       <p class="read" id="sUnit">ใส่จำนวนและยอดเงินเพื่อดูราคาต่อหน่วย</p>
@@ -1253,7 +1276,7 @@ function commitSale() {
   let recv = tot;
   if (s.m === 'cash') { const el = $('#recv'); recv = el && el.value !== '' ? N(el.value) : tot; if (recv < tot) return; }
   const k = today(), day = S.days[k] || (S.days[k] = { date: k, bills: [] });
-  const items = S.cart.map(l => ({ p: l.p, ...(l.tp ? { tp: l.tp } : {}), n: l.n, q: l.q, price: l.price, cost: l.cost || 0, tops: l.tops.map(t => ({ id: t.id, n: t.n, price: t.price, cost: t.cost || 0 })) }));
+  const items = S.cart.map(l => ({ p: l.p, ...(l.tp ? { tp: l.tp, ...(l.g ? { g: l.g } : {}) } : {}), n: l.n, q: l.q, price: l.price, cost: l.cost || 0, tops: l.tops.map(t => ({ id: t.id, n: t.n, price: t.price, cost: t.cost || 0 })) }));
   const bill = { id: uid('b'), t: new Date().toISOString(), items, sub: cartSub(), disc: cartDisc(), dl: cartDisc() ? S.disc.label : '', total: tot,
     cost: S.cart.reduce((a, l) => a + unitCost(l) * l.q, 0), pay: s.m, recv };
   const mb = curMem(), free = cartFree(), earn = earnPts(tot, mb);
@@ -1435,28 +1458,29 @@ const ACT = {
     else t.stock = Math.max(0, t.stock + d);
     saveCfg(); render();
   },
-  editTop: el => openSheet({ type: 'topEdit', id: el.dataset.id }),
+  editTop: el => openSheet({ type: 'topEdit', id: el.dataset.id, g: el.dataset.g || 'top' }),
   saveTop: () => {
-    const s = S.sheet, name = $('#tName').value.trim(); if (!name) return toast('ใส่ชื่อท็อปปิ้งก่อน');
-    const st = $('#tStock').value.trim();
-    const v = { name, price: N($('#tPrice').value), cost: N($('#tCost').value), unit: $('#tUnit').value.trim() || 'ที่', low: Math.max(0, Math.round(N($('#tLow').value))) };
+    const s = S.sheet, name = $('#tName').value.trim(); if (!name) return toast('ใส่ชื่อก่อน');
+    const g = s.id ? grpOf(topOf(s.id)) : s.g || 'top', st = $('#tStock').value.trim();
+    const v = { name, price: N($('#tPrice').value), cost: N($('#tCost').value), unit: $('#tUnit').value.trim() || GROUP[g].unit, low: Math.max(0, Math.round(N($('#tLow').value))) };
     let t = s.id && topOf(s.id);
-    if (t) Object.assign(t, v); else { t = { id: uid('t'), ord: Date.now(), ...v }; S.cfg.toppings.push(t); }
-    if (st === '') delete t.stock; else t.stock = Math.max(0, Math.round(N(st)));
+    if (t) Object.assign(t, v); else { t = { id: uid(g === 'drink' ? 'd' : 't'), ord: Date.now(), ...(g === 'drink' ? { g: 'drink' } : {}), ...v }; S.cfg.toppings.push(t); }
+    if (st === '' && g !== 'drink') delete t.stock; else t.stock = Math.max(0, Math.round(N(st)));
     if (s.img !== undefined) { if (s.img) S.imgs[t.id] = s.img; else delete S.imgs[t.id]; saveImg(t.id); }
-    saveCfg(); closeSheet(); S.stockTab = 'tops'; render(); toast('บันทึกท็อปปิ้งแล้ว');
+    saveCfg(); closeSheet(); S.stockTab = GROUP[g].tab; render(); toast(`บันทึก${GROUP[g].label}แล้ว`);
   },
-  delTop: () => { const id = S.sheet.id; if (S.imgs[id]) { delete S.imgs[id]; saveImg(id); } S.cfg.toppings = S.cfg.toppings.filter(t => t.id !== id); saveCfg(); closeSheet(); render(); toast('ลบท็อปปิ้งแล้ว'); },
-  topBulk: () => openSheet({ type: 'topBulk', rows: S.cfg.toppings.map(t => ({ id: t.id, name: t.name, price: t.price, cost: t.cost, stock: t.stock })) }),
+  delTop: () => { const id = S.sheet.id; if (S.imgs[id]) { delete S.imgs[id]; saveImg(id); } S.cfg.toppings = S.cfg.toppings.filter(t => t.id !== id); saveCfg(); closeSheet(); render(); toast('ลบแล้ว'); },
+  topBulk: el => { const g = el.dataset.g || 'top'; openSheet({ type: 'topBulk', g, rows: extras(g).map(t => ({ id: t.id, name: t.name, price: t.price, cost: t.cost, stock: t.stock })) }); },
   saveTopBulk: () => {
-    const old = S.cfg.toppings;
-    S.cfg.toppings = readRows().filter(r => r.name.trim()).map(r => {
+    const g = S.sheet.g, old = S.cfg.toppings, others = old.filter(t => grpOf(t) !== g);
+    const mine = readRows().filter(r => r.name.trim()).map(r => {
       const t = r.id && old.find(x => x.id === r.id), v = { name: r.name.trim(), price: N(r.price), cost: N(r.cost) };
-      const o = t ? Object.assign(t, v) : { id: uid('t'), ord: Date.now() + Math.random(), unit: 'ที่', low: 5, ...v };
-      if (String(r.stock).trim() === '') delete o.stock; else o.stock = Math.max(0, Math.round(N(r.stock)));
+      const o = t ? Object.assign(t, v) : { id: uid(g === 'drink' ? 'd' : 't'), ord: Date.now() + Math.random(), ...(g === 'drink' ? { g: 'drink' } : {}), unit: GROUP[g].unit, low: 5, ...v };
+      if (String(r.stock).trim() === '' && g !== 'drink') delete o.stock; else o.stock = Math.max(0, Math.round(N(r.stock)));
       return o;
     });
-    saveCfg(); closeSheet(); render(); toast('บันทึกท็อปปิ้งแล้ว');
+    S.cfg.toppings = [...others, ...mine].sort((a, b) => (a.ord || 0) - (b.ord || 0));
+    saveCfg(); closeSheet(); render(); toast(`บันทึก${GROUP[g].label}แล้ว`);
   },
   editBuyItems: () => openSheet({ type: 'buyItems', rows: clone(S.cfg.buyItems) }),
   saveBuyItems: () => {
@@ -1514,7 +1538,7 @@ const ACT = {
     const t = topOf(el.dataset.id); if (!t) return;
     if (topLeft(t.id) <= 0) return toast(`${t.name} หมดแล้ว`);
     const same = S.cart.find(l => l.tp === t.id);
-    if (same) same.q++; else S.cart.push({ p: null, tp: t.id, n: t.name, price: N(t.price), cost: N(t.cost), q: 1, tops: [] });
+    if (same) same.q++; else S.cart.push({ p: null, tp: t.id, ...(grpOf(t) === 'drink' ? { g: 'drink' } : {}), n: t.name, price: N(t.price), cost: N(t.cost), q: 1, tops: [] });
     render(); renderSheet();
   },
   top: el => { const s = S.sheet, id = el.dataset.id; s.tops = s.tops.includes(id) ? s.tops.filter(x => x !== id) : [...s.tops, id]; renderSheet(); },
