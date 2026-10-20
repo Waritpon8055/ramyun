@@ -861,8 +861,8 @@ function viewStock() {
     return `<div class="sk"><span class="noimg">${esc(t.name.trim().charAt(0))}</span>
       <div><div class="nm">${esc(t.name)}</div>
         <div class="mt">ขาย ${B(t.price)} ทุน ${B(t.cost)} <b>กำไร ${B(margin)}${t.price ? ' (' + Math.round(margin / t.price * 100) + '%)' : ''}</b></div>
-        <div class="mt">${counted(t) ? `นับสต็อกเป็น${esc(topUnit(t))} เตือนเมื่อเหลือ ${t.low ?? 5}` : 'ยังไม่นับสต็อก ขายได้ไม่จำกัด'}</div></div>
-      <div class="rt">${counted(t) ? `<span class="step"><button data-act="tstk" data-id="${t.id}" data-d="-1" aria-label="ลดสต็อก">−</button><span>${t.stock}</span><button data-act="tstk" data-id="${t.id}" data-d="1" aria-label="เพิ่มสต็อก">+</button></span>` : ''}
+        <div class="mt">${counted(t) ? `นับสต็อกเป็น${esc(topUnit(t))} เตือนเมื่อเหลือ ${t.low ?? 5}` : 'ยังไม่นับสต็อก ขายได้ไม่จำกัด กด + เพื่อเริ่มนับ'}</div></div>
+      <div class="rt"><span class="step"><button data-act="tstk" data-id="${t.id}" data-d="-1" aria-label="ลดสต็อก" ${counted(t) ? '' : 'disabled style="opacity:.35"'}>−</button><span>${counted(t) ? t.stock : '–'}</span><button data-act="tstk" data-id="${t.id}" data-d="1" aria-label="เพิ่มสต็อก">+</button></span>
         <button class="linkbtn" data-act="editTop" data-id="${t.id}">แก้ไข</button></div></div>`;
   }).join('');
   return `${alHTML}<div class="chips"><button class="chip" data-act="stockTab" data-id="noodle" aria-pressed="${!tops}">เส้น (${S.cfg.products.length})</button><button class="chip" data-act="stockTab" data-id="tops" aria-pressed="${tops}">ท็อปปิ้ง (${S.cfg.toppings.length})</button></div>
@@ -1407,7 +1407,12 @@ const ACT = {
     saveCfg(); closeSheet(); render(); toast('บันทึกหมวดหมู่สินค้าแล้ว');
   },
   stockTab: el => { S.stockTab = el.dataset.id; render(); },
-  tstk: el => { const t = topOf(el.dataset.id); if (!counted(t)) return; t.stock = Math.max(0, t.stock + N(el.dataset.d)); saveCfg(); render(); },
+  tstk: el => {
+    const t = topOf(el.dataset.id), d = N(el.dataset.d); if (!t) return;
+    if (!counted(t)) { if (d <= 0) return; t.stock = d; toast(`เริ่มนับสต็อก${t.name}แล้ว ตั้งหน่วยนับได้ที่ปุ่มแก้ไข`); }
+    else t.stock = Math.max(0, t.stock + d);
+    saveCfg(); render();
+  },
   editTop: el => openSheet({ type: 'topEdit', id: el.dataset.id }),
   saveTop: () => {
     const s = S.sheet, name = $('#tName').value.trim(); if (!name) return toast('ใส่ชื่อท็อปปิ้งก่อน');
