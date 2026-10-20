@@ -280,7 +280,7 @@ label.btn{cursor:pointer}
 .stats span{display:block;font-size:12.5px;color:var(--muted)}
 .stats b{font-family:var(--display);font-weight:500;font-size:19px}
 .h3s{font-family:var(--body);font-weight:600;font-size:14px;color:var(--muted);margin:16px 0 2px}
-@media (min-width:600px){ .grid{grid-template-columns:repeat(3,1fr)} .kpis{grid-template-columns:repeat(4,1fr)} .kpi.main{grid-column:span 2} }
+@media (min-width:600px){ .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))} .kpis{grid-template-columns:repeat(4,1fr)} .kpi.main{grid-column:span 2} }
 @media (min-width:960px){
   .top{padding-top:18px}
   .tabs{position:static;display:flex;gap:4px;background:none;border:0;padding:0}
@@ -293,7 +293,19 @@ label.btn{cursor:pointer}
   .aside{display:block;position:sticky;top:12px;background:var(--surface);border-radius:20px;padding:18px;box-shadow:var(--shadow)}
   .aside>h2{font-size:19px;margin-bottom:6px}
   .cartbar{display:none}
-  .grid{grid-template-columns:repeat(4,1fr)}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+  /* sell page fits the screen: menu scrolls on the left, the bill keeps its pay buttons in view on the right */
+  body.fit{height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+  body.fit main{flex:1;min-height:0;width:100%;padding-bottom:14px}
+  body.fit .sell{height:100%;align-items:stretch;grid-template-columns:1fr minmax(340px,32%)}
+  body.fit .sell>div:first-child{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 6px 16px 2px}
+  body.fit .aside{position:static;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  body.fit .aside .cart{flex:1;min-height:0;display:flex;flex-direction:column}
+  body.fit .aside .cl{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin-right:-6px;padding-right:6px}
+  body.fit .aside .cf{flex:none;border-top:1.5px solid var(--line);margin-top:4px}
+  body.fit .aside .cart .chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px}
+  body.fit .aside .cart h3{margin:8px 0 4px}
+  body.fit .aside .cart .acts{margin-top:8px;gap:4px}
   .twocol{display:grid;grid-template-columns:1.3fr 1fr;gap:14px;align-items:start}
   .scrim{align-items:center}
   .sheet{border-radius:22px}
@@ -729,6 +741,7 @@ function stockAlerts() {
   return out;
 }
 function render() {
+  document.body.classList.toggle('fit', S.tab === 'sell' && !!S.ready);
   const tabs = [['sell', 'ขาย'], ['sum', 'สรุปยอด'], ['exp', 'รายจ่าย'], ['mem', 'สมาชิก'], ['stock', 'สต็อก'], ['set', 'ตั้งค่า']];
   const alerts = S.ready ? stockAlerts().length : 0;
   $('#tabs').innerHTML = tabs.map(([k, t]) => `<button data-act="tab" data-id="${k}" ${S.tab === k ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>${t}${k === 'stock' && alerts ? '<span class="dot" title="มีของต้องดู"></span>' : ''}</button>`).join('');
@@ -827,7 +840,7 @@ function cartHTML() {
     .concat(S.cfg.promos.map(p => `<button class="chip y" data-act="disc" data-id="${p.id}" aria-pressed="${d.id === p.id}">${esc(promoLabel(p))}</button>`))
     .concat(`<button class="chip y" data-act="discCustom" aria-pressed="${d.id === 'custom'}">${d.id === 'custom' ? esc(d.label) : 'กำหนดเอง'}</button>`).join('');
   const L = S.cfg.loyalty, free = cartFree(), memHTML = memBlock();
-  return `<div class="cart">${lines}
+  return `<div class="cart"><div class="cl">${lines}</div><div class="cf">
     <h3>สมาชิก</h3>${memHTML}
     <h3>ส่วนลด</h3><div class="chips">${chips}</div>
     <div class="tot"><span>รวม ${S.cart.reduce((a, l) => a + l.q, 0)} รายการ</span><span>${B(cartSub())}</span></div>
@@ -835,7 +848,7 @@ function cartHTML() {
     ${dv ? `<div class="tot"><span>${esc(d.label)}</span><span>−${B(dv)}</span></div>` : ''}
     <div class="tot big"><span>ต้องรับ</span><span>${B(cartTotal())}</span></div>
     <div class="acts"><div class="row2"><button class="btn red" data-act="pay" data-id="cash">รับเงินสด</button><button class="btn" data-act="pay" data-id="qr">พร้อมเพย์ QR</button></div>
-    <button class="linkbtn" data-act="clearCart">ล้างบิลนี้</button></div></div>`;
+    <button class="linkbtn" data-act="clearCart">ล้างบิลนี้</button></div></div></div>`;
 }
 
 /* ---------- render: summary ---------- */
